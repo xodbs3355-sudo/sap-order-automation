@@ -36,3 +36,9 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
 - gui/index.html: 확정된 GUI (목업에서 가져온 파일)
 - gui/assets/fonts/: 로컬 폰트 파일 보관 폴더 (Gmarket Sans Bold, Nanum Gothic)
 - config/settings.json: 허가청·업체·단가표 설정값
+
+## GUI 미리보기 (개발 지원)
+- HTML/GUI를 수정하면 매번 헤드리스 Chromium으로 렌더링해 PNG 스크린샷으로 보여줄 것.
+  → 코드만 설명하지 말고, 실제 화면을 이미지로 확인시켜 줄 것.
+- 실행 환경에 브라우저가 없을 수 있으니, 로컬 CLI라면 먼저 Playwright/Chromium
+  설치 여부를 확인하고, 없으면 설치 방법을 안내할 것.
