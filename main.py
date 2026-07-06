@@ -114,7 +114,7 @@ def main() -> None:
     """pywebview 창을 생성하고 GUI 를 실행한다."""
     api = Api()
     webview.create_window(
-        title="공사 발주 자동화 프로그램",
+        title="SAP Work Order Automation",
         url=get_gui_path(),
         js_api=api,
         width=1440,
