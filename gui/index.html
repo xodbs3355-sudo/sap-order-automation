@@ -500,6 +500,36 @@ tbody tr:nth-child(even):hover td.input-td {
   background: #fff; color: #c98a12; border: 1px solid #f0d29a;
   border-radius: 8px; cursor: pointer; font-weight: 500;
 }
+
+/* ── 로그 버튼 (우측 하단 진행바 줄) ── */
+.prog-foot-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.log-btn {
+  padding: 3px 12px; font-size: 11px; font-weight: 600;
+  background: #fff; color: #212842;
+  border: 1px solid #c8bfaa; border-radius: 6px;
+  cursor: pointer; flex-shrink: 0;
+}
+.log-btn:hover { background: #f6f2ea; }
+
+/* ── 로그 모달 ── */
+.modal.log { width: 760px; }
+.log-list {
+  padding: 10px 16px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 12px; line-height: 1.5;
+}
+.log-line {
+  display: flex; gap: 10px; padding: 4px 2px;
+  border-bottom: 1px solid #f2f4f7;
+}
+.log-time { color: #9aa3b5; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.log-msg { color: #212842; word-break: break-all; }
+.log-line.success .log-msg { color: #1f9d57; }
+.log-line.warn .log-msg { color: #d68a0c; }
+.log-line.error .log-msg { color: #d0455f; }
+.log-empty { color: #9aa3b5; padding: 20px; text-align: center; }
 </style>
 </head>
 <body>
@@ -719,7 +749,10 @@ tbody tr:nth-child(even):hover td.input-td {
       </div>
       <div class="right-footer">
         <div class="prog-bg"><div class="prog-fill"></div></div>
-        <div class="prog-text">1/3건 처리 중 · 2단계/6</div>
+        <div class="prog-foot-row">
+          <div class="prog-text">1/3건 처리 중 · 2단계/6</div>
+          <button class="log-btn" onclick="openLogModal()">로그</button>
+        </div>
       </div>
     </div>
 
@@ -770,6 +803,23 @@ tbody tr:nth-child(even):hover td.input-td {
         <button class="btn-warn" onclick="resetYear()">연도(시트) 초기화</button>
       </div>
       <button class="btn-main" onclick="savePrices()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 처리 로그 모달 (평소 숨김 / 우측 하단 '로그' 버튼으로 열림) -->
+<div class="modal-overlay" id="logModal">
+  <div class="modal log">
+    <div class="modal-head">
+      <div class="modal-title">🗒️ 처리 로그</div>
+      <button class="modal-close" onclick="closeLogModal()">✕</button>
+    </div>
+    <div class="log-list" id="logList"><!-- 로그: JS 생성 --></div>
+    <div class="modal-foot">
+      <div class="left-btns">
+        <button class="btn-warn" onclick="clearLogs()">로그 지우기</button>
+      </div>
+      <button class="btn-out" onclick="closeLogModal()">닫기</button>
     </div>
   </div>
 </div>
@@ -1008,6 +1058,63 @@ function savePrices() {
       alert("저장 실패: " + ((res && res.error) || "알 수 없는 오류"));
     }
   });
+}
+
+/* ─────────────── 처리 로그 모달 ─────────────── */
+/* 로그는 화면 메모리(LOG_ENTRIES)에 쌓입니다.
+   자동화 코드가 addLog(메시지, 등급) 로 기록하면 됩니다.
+   아래 예시 몇 줄은 화면 확인용이며, 실제 실행 시 지워지고 실기록이 쌓입니다. */
+var LOG_ENTRIES = [
+  { time: "09:12:03", level: "info",    msg: "프로그램 시작 · SAP 연결됨" },
+  { time: "09:12:20", level: "success", msg: "ZREC0002 접수 완료 (JS20260019)" },
+  { time: "09:12:41", level: "success", msg: "ZREC0100 공사번호 생성 · 2026A0038" },
+  { time: "09:13:02", level: "warn",    msg: "단가 불일치 — 수동 처리 필요 (JS20260021)" },
+  { time: "09:13:15", level: "error",   msg: "예상치 못한 SAP 팝업 감지 — 해당 건 중단" }
+];
+
+function nowTime() {
+  var d = new Date();
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+
+/* 자동화 코드가 호출할 로그 기록 함수. level: info | success | warn | error */
+function addLog(msg, level) {
+  LOG_ENTRIES.push({ time: nowTime(), level: level || "info", msg: msg });
+  if (document.getElementById("logModal").classList.contains("open")) renderLogs();
+}
+
+function renderLogs() {
+  var box = document.getElementById("logList");
+  box.innerHTML = "";
+  if (!LOG_ENTRIES.length) {
+    box.innerHTML = '<div class="log-empty">기록된 로그가 없습니다.</div>';
+    return;
+  }
+  LOG_ENTRIES.forEach(function(e) {
+    var line = document.createElement("div");
+    line.className = "log-line " + (e.level || "info");
+    var t = document.createElement("span");
+    t.className = "log-time"; t.textContent = e.time;
+    var m = document.createElement("span");
+    m.className = "log-msg"; m.textContent = e.msg;
+    line.appendChild(t); line.appendChild(m);
+    box.appendChild(line);
+  });
+  box.scrollTop = box.scrollHeight;   /* 최신 로그로 자동 스크롤 */
+}
+
+function openLogModal() {
+  renderLogs();
+  document.getElementById("logModal").classList.add("open");
+}
+function closeLogModal() {
+  document.getElementById("logModal").classList.remove("open");
+}
+function clearLogs() {
+  if (!confirm("로그를 모두 지울까요?")) return;
+  LOG_ENTRIES = [];
+  renderLogs();
 }
 </script>
 </body>
