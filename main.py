@@ -118,7 +118,7 @@ def main() -> None:
         url=get_gui_path(),
         js_api=api,
         width=1440,
-        height=900,
+        height=800,
         resizable=True,
     )
     webview.start()
