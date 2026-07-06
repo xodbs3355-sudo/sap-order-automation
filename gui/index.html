@@ -542,6 +542,7 @@ tbody tr:nth-child(even):hover td.input-td {
       공사 발주 자동화 프로그램
     </div>
     <div class="topbar-btns">
+      <button class="btn-out" onclick="checkSapConnection()">🔌 SAP 연결 확인</button>
       <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
       <button class="btn-out">↻ 리스트 불러오기</button>
       <button class="btn-main">▶ 선택 건 실행</button>
@@ -759,7 +760,7 @@ tbody tr:nth-child(even):hover td.input-td {
   </div>
 
   <div class="bot">
-    <span class="bot-stat">전체 3건 · 체크 3건 · SAP 연결됨</span>
+    <span class="bot-stat">전체 3건 · 체크 3건 · <span id="sapStatus">SAP 연결 미확인</span></span>
     <label class="test-lbl">
       <input type="checkbox" checked style="width:13px;height:13px;">
       TSRM 전송 건너뜀
@@ -1115,6 +1116,35 @@ function clearLogs() {
   if (!confirm("로그를 모두 지울까요?")) return;
   LOG_ENTRIES = [];
   renderLogs();
+}
+
+/* ─────────────── SAP 연결 확인 ─────────────── */
+function checkSapConnection() {
+  if (!hasPython()) {
+    alert("브라우저 미리보기입니다.\nSAP 연결 확인은 앱(python main.py)으로 실행할 때 동작합니다.");
+    return;
+  }
+  var el = document.getElementById("sapStatus");
+  if (el) { el.textContent = "SAP 확인 중…"; el.style.color = "#c98a12"; }
+
+  window.pywebview.api.check_sap_connection().then(function(res) {
+    if (res && res.ok) {
+      if (el) {
+        el.textContent = "SAP 연결됨 (" + res.system + "/" + res.client + ")";
+        el.style.color = "#1f9d57";
+      }
+      addLog("SAP 연결 확인 · " + res.system + " / client " + res.client +
+             " / " + res.user, "success");
+      alert("SAP 연결됨\n\n시스템: " + res.system +
+            "\n클라이언트: " + res.client +
+            "\n사용자: " + res.user +
+            "\n현재 화면: " + res.transaction);
+    } else {
+      if (el) { el.textContent = "SAP 연결 안 됨"; el.style.color = "#d0455f"; }
+      addLog("SAP 연결 실패 · " + ((res && res.error) || "알 수 없음"), "error");
+      alert("SAP 연결 실패\n\n" + ((res && res.error) || "알 수 없는 오류"));
+    }
+  });
 }
 </script>
 </body>
