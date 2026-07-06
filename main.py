@@ -119,6 +119,7 @@ def main() -> None:
         js_api=api,
         width=1440,
         height=800,
+        min_size=(1200, 700),   # 이 크기 아래로는 축소 불가(축소 시 레이아웃 깨짐 방지)
         resizable=True,
     )
     webview.start()
