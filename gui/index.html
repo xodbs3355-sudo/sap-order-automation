@@ -108,7 +108,7 @@ body {
   overflow: hidden;
 }
 .tbl-scroll { overflow: auto; flex: 1; }
-table { border-collapse: collapse; white-space: nowrap; }
+table { border-collapse: collapse; white-space: nowrap; width: 100%; }
 
 /* 헤더 */
 thead tr { position: sticky; top: 0; z-index: 2; }
@@ -614,7 +614,7 @@ tbody tr:nth-child(even):hover td.input-td {
               <th style="width:28px;"><input type="checkbox" id="chk-all" style="width:13px;height:13px;" onchange="toggleAll(this)"></th>
               <th style="width:32px;">상태</th>
               <th style="width:100px;">CMP No</th>
-              <th style="width:215px;">구간명</th>
+              <th style="min-width:215px;">구간명</th>
               <th style="width:44px;">연장</th>
               <th style="width:86px;">승인투자비</th>
               <th style="width:74px;">의뢰일자</th>
