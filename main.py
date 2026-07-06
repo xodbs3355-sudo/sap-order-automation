@@ -13,6 +13,7 @@ import webview
 
 from config_manager import ConfigManager
 from sap import connector
+from sap import zrec0002
 
 
 def get_gui_path() -> str:
@@ -68,6 +69,24 @@ class Api:
     def get_vendors(self):
         """토목배관업체 목록(코드+이름)."""
         return self.cfg.vendors() if self.cfg else []
+
+    # ── 의뢰공사 리스트 ────────────────────────────────────
+    def load_request_list(self):
+        """ZREC0002 조회로 의뢰 공사 목록을 읽어 반환(화면 '리스트 불러오기').
+
+        성공: {"ok": True, "columns": [...], "rows": [...], "row_count": n}
+        실패: {"ok": False, "error": 사유}
+        """
+        try:
+            session = connector.get_session()
+        except connector.SapConnectionError as e:
+            return {"ok": False, "error": str(e)}
+        try:
+            data = zrec0002.fetch_request_list(session)
+            data["ok"] = True
+            return data
+        except Exception as e:
+            return {"ok": False, "error": "목록 조회 실패: %s" % e}
 
     # ── SAP 연결 ───────────────────────────────────────────
     def check_sap_connection(self):
