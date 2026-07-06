@@ -57,7 +57,7 @@ def fetch_request_list(session):
     row_count = grid.RowCount
     rows = []
     for r in range(row_count):
-        row = {}
+        row = {"_row": r}   # SAP 그리드 실제 행 인덱스(이후 행 선택에 사용)
         for cid in col_ids:
             try:
                 row[cid] = grid.GetCellValue(r, cid)

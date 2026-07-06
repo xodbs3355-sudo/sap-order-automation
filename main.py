@@ -117,8 +117,8 @@ def main() -> None:
         title="공사 발주 자동화 프로그램",
         url=get_gui_path(),
         js_api=api,
-        width=1375,
-        height=760,
+        width=1440,
+        height=900,
         resizable=True,
     )
     webview.start()

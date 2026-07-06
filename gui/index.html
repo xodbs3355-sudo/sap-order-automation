@@ -14,20 +14,25 @@
   src: url('assets/fonts/NanumGothic.ttf');
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
 body {
   font-family: 'Nanum Gothic', 'Apple SD Gothic Neo', sans-serif;
-  background: #eceef2;
-  padding: 32px;
-  min-height: 100vh;
+  background: #ffffff;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* ── 앱 전체 ── */
 .app {
-  width: 1375px;
+  width: 100%;
+  height: 100vh;
   background: #ffffff;
-  border-radius: 16px;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(33,40,66,0.12);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── 타이틀바 ── */
@@ -82,7 +87,7 @@ body {
 }
 
 /* ── 바디 좌우 분할 ── */
-.body { display: flex; height: 580px; }
+.body { display: flex; flex: 1; min-height: 0; }
 
 /* ── 좌측 테이블 ── */
 .left {
@@ -824,6 +829,7 @@ function renderRows(rows) {
   tbody.innerHTML = '';
   rows.forEach(function(row) {
     var tr = document.createElement('tr');
+    if (row._row != null) tr.dataset.row = row._row;   /* SAP 그리드 행 인덱스 */
 
     var tdChk = document.createElement('td');
     var chk = document.createElement('input');
@@ -875,12 +881,16 @@ function normalizeRows(columns, rows) {
   var idDate = findId(['의뢰일']);
   return rows.map(function(r) {
     return {
+      _row:   r["_row"],
       cmp:    idCmp  ? r[idCmp]  : '',
       name:   idName ? r[idName] : '',
       length: idLen  ? r[idLen]  : '',
       cost:   idCost ? r[idCost] : '',
       date:   idDate ? r[idDate] : ''
     };
+  }).filter(function(x) {
+    /* CMP No 가 없는 행(합계/소계 행)은 제외 */
+    return x.cmp && String(x.cmp).trim() !== '';
   });
 }
 
