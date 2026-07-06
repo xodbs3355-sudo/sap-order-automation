@@ -860,9 +860,30 @@ function 숫자만(s) {
   return d === "" ? null : parseInt(d, 10);
 }
 
+/* Python 연결 여부 확인 (pywebview 안이면 true, 브라우저면 false) */
+function hasPython() {
+  return !!(window.pywebview && window.pywebview.api);
+}
+
+/* 단가 데이터를 Python(settings.json)에서 불러온다.
+   브라우저 미리보기(Python 없음)면 임시 시드값(PRICE_DATA)을 그대로 쓴다. */
+function loadPriceData() {
+  if (!hasPython()) return Promise.resolve();
+  return window.pywebview.api.get_price_table().then(function(data) {
+    if (data && Object.keys(data).length) {
+      PRICE_DATA = data;
+      if (!PRICE_DATA[CURRENT_YEAR]) {
+        CURRENT_YEAR = Object.keys(PRICE_DATA).sort().pop();
+      }
+    }
+  });
+}
+
 function openPriceModal() {
-  renderYear(CURRENT_YEAR);
-  document.getElementById("priceModal").classList.add("open");
+  loadPriceData().then(function() {
+    renderYear(CURRENT_YEAR);
+    document.getElementById("priceModal").classList.add("open");
+  });
 }
 function closePriceModal() {
   document.getElementById("priceModal").classList.remove("open");
@@ -970,10 +991,23 @@ function savePrices() {
     });
     if (PRICE_DATA[y].PLP === null) missing++;
   });
-  /* Step 6에서 이 지점에 pywebview → config_manager.save() 연결 예정 */
-  alert("저장 준비 완료 (현재는 화면 메모리에만 반영).\n" +
-        "빈 칸 " + missing + "개.\n\n" +
-        "※ 실제 파일 저장은 Step 6(화면↔Python 연결)에서 이어집니다.");
+
+  if (!hasPython()) {
+    /* 브라우저 미리보기: 파일 저장 없이 안내만 */
+    alert("브라우저 미리보기라 파일 저장은 생략됩니다.\n빈 칸 " + missing + "개.");
+    return;
+  }
+
+  /* pywebview 안: Python 으로 보내 settings.json 에 실제 저장 */
+  window.pywebview.api.save_price_table(PRICE_DATA).then(function(res) {
+    if (res && res.ok) {
+      alert("저장되었습니다. (settings.json 반영 완료)" +
+            (missing ? "\n\n참고: 빈 칸 " + missing + "개가 있습니다." : ""));
+      closePriceModal();
+    } else {
+      alert("저장 실패: " + ((res && res.error) || "알 수 없는 오류"));
+    }
+  });
 }
 </script>
 </body>
