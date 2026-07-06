@@ -390,6 +390,116 @@ tbody tr:nth-child(even):hover td.input-td {
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* ── 단가표 관리 모달 ── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(33,40,66,0.45);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  width: 1120px;
+  max-width: 100%;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(33,40,66,0.28);
+}
+.modal-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid #dde0e8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #212842;
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Gmarket Sans', sans-serif;
+}
+.modal-close {
+  border: none; background: none; cursor: pointer;
+  font-size: 18px; color: #8a93a8; line-height: 1;
+  padding: 4px 10px; border-radius: 8px;
+}
+.modal-close:hover { background: #f0f2f5; color: #212842; }
+
+/* 연도 탭 */
+.year-tabs {
+  padding: 12px 20px 0;
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.year-tab {
+  padding: 6px 14px;
+  font-size: 12px; font-weight: 700;
+  border: 1px solid #c0c8d8; border-radius: 8px;
+  background: #fff; color: #6070a0; cursor: pointer;
+}
+.year-tab.active { background: #212842; color: #fff; border-color: #212842; }
+.year-tab.add { color: #6070a0; font-weight: 500; border-style: dashed; }
+
+/* 3열 본문 */
+.modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+.price-card {
+  border: 1px solid #e3e6ee;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fbfbfc;
+}
+.price-card h4 {
+  font-size: 12px; font-weight: 700; color: #212842;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid #e3e6ee;
+}
+.price-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.price-row .len {
+  width: 34px; font-size: 12px; color: #6070a0; flex-shrink: 0;
+}
+.price-row input {
+  flex: 1; text-align: right;
+  font-size: 12px; padding: 6px 8px;
+  border: 1px solid #c0c8d8; border-radius: 6px;
+  color: #212842; background: #fff; min-width: 0;
+}
+.price-row .won { font-size: 11px; color: #9aa3b5; flex-shrink: 0; }
+.price-card.plp .price-row .len { width: auto; flex: 1; color: #9aa3b5; font-size: 11px; }
+
+/* 푸터 */
+.modal-foot {
+  padding: 12px 20px;
+  border-top: 1px solid #dde0e8;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-foot .left-btns { display: flex; gap: 8px; }
+.btn-danger {
+  padding: 7px 14px; font-size: 12px;
+  background: #fff; color: #d0455f; border: 1px solid #e6b3bf;
+  border-radius: 8px; cursor: pointer; font-weight: 500;
+}
+.btn-warn {
+  padding: 7px 14px; font-size: 12px;
+  background: #fff; color: #c98a12; border: 1px solid #f0d29a;
+  border-radius: 8px; cursor: pointer; font-weight: 500;
+}
 </style>
 </head>
 <body>
@@ -402,6 +512,7 @@ tbody tr:nth-child(even):hover td.input-td {
       공사 발주 자동화 프로그램
     </div>
     <div class="topbar-btns">
+      <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
       <button class="btn-out">↻ 리스트 불러오기</button>
       <button class="btn-main">▶ 선택 건 실행</button>
     </div>
@@ -624,6 +735,45 @@ tbody tr:nth-child(even):hover td.input-td {
 
 </div>
 
+<!-- 단가표 관리 모달 (평소 숨김 / 상단 '⚙ 단가표 관리' 버튼으로 열림) -->
+<div class="modal-overlay" id="priceModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">📋 단가표 관리</div>
+      <button class="modal-close" onclick="closePriceModal()">✕</button>
+    </div>
+
+    <div class="year-tabs" id="yearTabs"><!-- 연도 탭: JS 생성 --></div>
+
+    <div class="modal-body">
+      <div class="price-card">
+        <h4>도로재질 : ASP(절삭포장)</h4>
+        <div id="col-ASP"><!-- 1~10m: JS 생성 --></div>
+      </div>
+      <div class="price-card">
+        <h4>도로재질 : CON'C 및 보도블럭(ASP 外)</h4>
+        <div id="col-CONC"><!-- 1~10m: JS 생성 --></div>
+      </div>
+      <div class="price-card plp">
+        <h4>PLP 옵션</h4>
+        <div class="price-row">
+          <span class="len">연장/도로재질 규격 무관</span>
+          <input type="text" id="plp-input" inputmode="numeric">
+          <span class="won">원</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <div class="left-btns">
+        <button class="btn-danger" onclick="deleteYear()">연도(시트) 삭제</button>
+        <button class="btn-warn" onclick="resetYear()">연도(시트) 초기화</button>
+      </div>
+      <button class="btn-main" onclick="savePrices()">저장</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function toggleAll(masterCb) {
   var checkboxes = document.querySelectorAll('tbody input[type="checkbox"]');
@@ -679,6 +829,151 @@ function applyBulk(applyAll) {
     if (val_시작  && rowInputs[0])  rowInputs[0].value  = val_시작;
     if (val_종료  && rowInputs[1])  rowInputs[1].value  = val_종료;
   });
+}
+
+/* ─────────────── 단가표 관리 모달 ─────────────── */
+/* 주의: 아래 PRICE_DATA 는 임시 시드값입니다.
+   Step 6(화면↔Python 연결)에서 config_manager 가 settings.json 을 읽어
+   이 값을 채우고, [저장] 시 다시 settings.json 에 기록하도록 연결합니다. */
+var PRICE_DATA = {
+  "2025": {
+    ASP:  {1:null,2:null,3:null,4:null,5:null,6:null,7:null,8:null,9:null,10:null},
+    CONC: {1:null,2:null,3:null,4:null,5:null,6:null,7:null,8:null,9:null,10:null},
+    PLP: 190000
+  },
+  "2026": {
+    ASP:  {1:2694000,2:3032000,3:3370000,4:3708000,5:4046000,6:4409000,7:4745000,8:5083000,9:5421000,10:5759000},
+    CONC: {1:2041000,2:2223000,3:2404000,4:2585000,5:2766000,6:2972000,7:3153000,8:3334000,9:3515000,10:3696000},
+    PLP: 192000
+  }
+};
+var CURRENT_YEAR = "2026";
+
+/* 세 자리마다 콤마 (2694000 → 2,694,000) */
+function 천단위(n) {
+  if (n === null || n === undefined || n === "") return "";
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+/* 숫자만 추출 ("2,694,000원" → 2694000, 빈값이면 null) */
+function 숫자만(s) {
+  var d = String(s).replace(/[^0-9]/g, "");
+  return d === "" ? null : parseInt(d, 10);
+}
+
+function openPriceModal() {
+  renderYear(CURRENT_YEAR);
+  document.getElementById("priceModal").classList.add("open");
+}
+function closePriceModal() {
+  document.getElementById("priceModal").classList.remove("open");
+}
+
+function renderYearTabs() {
+  var tabs = document.getElementById("yearTabs");
+  tabs.innerHTML = "";
+  Object.keys(PRICE_DATA).sort().forEach(function(y) {
+    var b = document.createElement("button");
+    b.className = "year-tab" + (y === CURRENT_YEAR ? " active" : "");
+    b.textContent = y;
+    b.onclick = function() { switchYear(y); };
+    tabs.appendChild(b);
+  });
+  var add = document.createElement("button");
+  add.className = "year-tab add";
+  add.textContent = "+ 새 연도 추가";
+  add.onclick = addYear;
+  tabs.appendChild(add);
+}
+
+function renderColumn(material) {
+  var box = document.getElementById("col-" + material);
+  box.innerHTML = "";
+  var cells = PRICE_DATA[CURRENT_YEAR][material];
+  for (var L = 1; L <= 10; L++) {
+    var row = document.createElement("div");
+    row.className = "price-row";
+    var len = document.createElement("span");
+    len.className = "len"; len.textContent = L + "m";
+    var inp = document.createElement("input");
+    inp.type = "text"; inp.setAttribute("inputmode", "numeric");
+    inp.dataset.material = material; inp.dataset.length = L;
+    inp.value = 천단위(cells[L]);
+    inp.oninput = function() { this.value = 천단위(숫자만(this.value)); };
+    var won = document.createElement("span");
+    won.className = "won"; won.textContent = "원";
+    row.appendChild(len); row.appendChild(inp); row.appendChild(won);
+    box.appendChild(row);
+  }
+}
+
+function renderYear(year) {
+  CURRENT_YEAR = year;
+  renderYearTabs();
+  renderColumn("ASP");
+  renderColumn("CONC");
+  var plp = document.getElementById("plp-input");
+  plp.value = 천단위(PRICE_DATA[year].PLP);
+  plp.oninput = function() { this.value = 천단위(숫자만(this.value)); };
+}
+
+/* 화면 입력값을 PRICE_DATA 에 반영(연도 전환/저장 전 호출) */
+function collectCurrent() {
+  ["ASP", "CONC"].forEach(function(material) {
+    var inputs = document.querySelectorAll('#col-' + material + ' input');
+    inputs.forEach(function(inp) {
+      PRICE_DATA[CURRENT_YEAR][material][inp.dataset.length] = 숫자만(inp.value);
+    });
+  });
+  PRICE_DATA[CURRENT_YEAR].PLP = 숫자만(document.getElementById("plp-input").value);
+}
+
+function switchYear(year) {
+  collectCurrent();
+  renderYear(year);
+}
+
+function addYear() {
+  collectCurrent();
+  var y = prompt("추가할 연도(4자리)를 입력하세요.", "");
+  if (!y) return;
+  y = y.trim();
+  if (!/^\d{4}$/.test(y)) { alert("연도는 4자리 숫자로 입력하세요. 예: 2027"); return; }
+  if (PRICE_DATA[y]) { alert(y + " 년도는 이미 있습니다."); return; }
+  var empty = {}; for (var L = 1; L <= 10; L++) empty[L] = null;
+  PRICE_DATA[y] = { ASP: Object.assign({}, empty), CONC: Object.assign({}, empty), PLP: null };
+  renderYear(y);
+}
+
+function deleteYear() {
+  if (Object.keys(PRICE_DATA).length <= 1) { alert("연도가 하나뿐이라 삭제할 수 없습니다."); return; }
+  if (!confirm(CURRENT_YEAR + " 년도 단가표를 삭제할까요?")) return;
+  delete PRICE_DATA[CURRENT_YEAR];
+  renderYear(Object.keys(PRICE_DATA).sort()[0]);
+}
+
+function resetYear() {
+  if (!confirm(CURRENT_YEAR + " 년도의 입력값을 모두 지울까요?")) return;
+  for (var L = 1; L <= 10; L++) {
+    PRICE_DATA[CURRENT_YEAR].ASP[L] = null;
+    PRICE_DATA[CURRENT_YEAR].CONC[L] = null;
+  }
+  PRICE_DATA[CURRENT_YEAR].PLP = null;
+  renderYear(CURRENT_YEAR);
+}
+
+function savePrices() {
+  collectCurrent();
+  var missing = 0;
+  Object.keys(PRICE_DATA).forEach(function(y) {
+    ["ASP", "CONC"].forEach(function(m) {
+      for (var L = 1; L <= 10; L++) if (PRICE_DATA[y][m][L] === null) missing++;
+    });
+    if (PRICE_DATA[y].PLP === null) missing++;
+  });
+  /* Step 6에서 이 지점에 pywebview → config_manager.save() 연결 예정 */
+  alert("저장 준비 완료 (현재는 화면 메모리에만 반영).\n" +
+        "빈 칸 " + missing + "개.\n\n" +
+        "※ 실제 파일 저장은 Step 6(화면↔Python 연결)에서 이어집니다.");
 }
 </script>
 </body>
