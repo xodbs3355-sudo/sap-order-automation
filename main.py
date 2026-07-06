@@ -12,6 +12,7 @@ import os
 import webview
 
 from config_manager import ConfigManager
+from sap import connector
 
 
 def get_gui_path() -> str:
@@ -67,6 +68,15 @@ class Api:
     def get_vendors(self):
         """토목배관업체 목록(코드+이름)."""
         return self.cfg.vendors() if self.cfg else []
+
+    # ── SAP 연결 ───────────────────────────────────────────
+    def check_sap_connection(self):
+        """SAP 연결 상태를 점검해 반환(화면의 '연결 확인'에서 호출).
+
+        성공: {"ok": True, system/client/user/transaction/language}
+        실패: {"ok": False, "error": 사유}
+        """
+        return connector.check_connection()
 
     # ── 상태 ───────────────────────────────────────────────
     def get_status(self):
