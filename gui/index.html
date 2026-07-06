@@ -513,6 +513,9 @@ tbody tr:nth-child(even):hover td.input-td {
 }
 .log-btn:hover { background: #f6f2ea; }
 
+/* 의뢰공사 리스트 제목 */
+.list-title { font-size: 13px; font-weight: 700; color: #212842; }
+
 /* ── 로그 모달 ── */
 .modal.log { width: 760px; height: 80vh; }
 .log-list {
@@ -542,9 +545,7 @@ tbody tr:nth-child(even):hover td.input-td {
       공사 발주 자동화 프로그램
     </div>
     <div class="topbar-btns">
-      <button class="btn-out" onclick="checkSapConnection()">🔌 SAP 연결 확인</button>
       <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
-      <button class="btn-out">↻ 리스트 불러오기</button>
       <button class="btn-main">▶ 선택 건 실행</button>
     </div>
   </div>
@@ -558,7 +559,9 @@ tbody tr:nth-child(even):hover td.input-td {
           <thead>
             <!-- 버튼 행 -->
             <tr class="bulk-btn-tr">
-              <td colspan="7" style="background:#f8f9fb; border-bottom:1px solid #dde0e8;"></td>
+              <td colspan="7" style="background:#f8f9fb; border-bottom:1px solid #dde0e8; padding:6px 12px; text-align:left;">
+                <span class="list-title">의뢰공사 리스트</span>
+              </td>
               <td style="background:#f8f9fb; border-bottom:1px solid #dde0e8; border-left:none; border-right:none; padding:5px 5px; text-align:center;">
                 <span class="bulk-label">일괄적용</span>
               </td>
@@ -570,7 +573,9 @@ tbody tr:nth-child(even):hover td.input-td {
             </tr>
             <!-- 일괄 입력 행 -->
             <tr class="bulk-input-tr">
-              <td colspan="7"></td>
+              <td colspan="7" style="padding:5px 12px;">
+                <button class="btn-out" onclick="loadRequestList()">↻ 리스트 불러오기</button>
+              </td>
               <td>
                 <select id="bulk-굴착"><option value=""></option><option>대상</option><option>비대상</option></select>
               </td>
@@ -1118,32 +1123,36 @@ function clearLogs() {
   renderLogs();
 }
 
-/* ─────────────── SAP 연결 확인 ─────────────── */
-function checkSapConnection() {
+/* ─────────────── 의뢰공사 리스트 불러오기 ─────────────── */
+/* 먼저 SAP 연결을 확인한다.
+   - 실패: 팝업창으로 안내 + 하단·로그 표시
+   - 성공: 팝업 없이 하단에 한 줄 표시 + 로그
+   실제 목록 조회(ZREC0002)는 Step 8에서 이 함수에 연결한다. */
+function loadRequestList() {
   if (!hasPython()) {
-    alert("브라우저 미리보기입니다.\nSAP 연결 확인은 앱(python main.py)으로 실행할 때 동작합니다.");
+    alert("브라우저 미리보기입니다.\n리스트 불러오기는 앱(python main.py)으로 실행할 때 동작합니다.");
     return;
   }
   var el = document.getElementById("sapStatus");
   if (el) { el.textContent = "SAP 확인 중…"; el.style.color = "#c98a12"; }
 
   window.pywebview.api.check_sap_connection().then(function(res) {
-    if (res && res.ok) {
-      if (el) {
-        el.textContent = "SAP 연결됨 (" + res.system + "/" + res.client + ")";
-        el.style.color = "#1f9d57";
-      }
-      addLog("SAP 연결 확인 · " + res.system + " / client " + res.client +
-             " / " + res.user, "success");
-      alert("SAP 연결됨\n\n시스템: " + res.system +
-            "\n클라이언트: " + res.client +
-            "\n사용자: " + res.user +
-            "\n현재 화면: " + res.transaction);
-    } else {
+    if (!res || !res.ok) {
+      /* 실패 → 팝업 */
       if (el) { el.textContent = "SAP 연결 안 됨"; el.style.color = "#d0455f"; }
       addLog("SAP 연결 실패 · " + ((res && res.error) || "알 수 없음"), "error");
-      alert("SAP 연결 실패\n\n" + ((res && res.error) || "알 수 없는 오류"));
+      alert("SAP에 연결되지 않았습니다.\n\n" + ((res && res.error) || "알 수 없는 오류") +
+            "\n\nSAP 로그인 여부와 스크립팅 설정을 확인하세요.");
+      return;
     }
+    /* 성공 → 팝업 없이 하단 한 줄 */
+    if (el) {
+      el.textContent = "SAP 연결됨 · " + res.system + "/" + res.client + " · " + res.user;
+      el.style.color = "#1f9d57";
+    }
+    addLog("SAP 연결됨 · " + res.system + "/" + res.client + "/" + res.user, "success");
+    addLog("의뢰공사 목록 조회는 Step 8에서 연결됩니다.", "info");
+    /* TODO(Step 8): window.pywebview.api.load_request_list() 로 실제 목록 조회 후 표 채우기 */
   });
 }
 </script>
