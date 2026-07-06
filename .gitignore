@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 로그 / 임시
+*.log
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
