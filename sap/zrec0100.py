@@ -46,11 +46,40 @@ POP_NO = "wnd[1]/usr/btnSPOP-OPTION2"         # "아니오"
 _GONGSA_PAT = re.compile(r"^\d{4}[A-Z]\d+$")   # 공사번호 형식 예: 2026A0043
 
 
+def _focus_code_row(session, wnd, code):
+    """값도움/검색결과 창(wnd)에서 코드가 적힌 줄에 커서를 올린다.
+
+    SAP 는 "어느 줄을 고를지" 커서 위치를 알아야 선택을 허용한다.
+    (안 그러면 'Place the cursor on a line in the hitlist' 오류)
+    화면의 라벨들을 훑어 코드 텍스트와 일치하는 줄을 찾아 setFocus 한다.
+    찾으면 True, 못 찾으면 False.
+    """
+    code = str(code).strip()
+    try:
+        usr = session.findById(wnd + "/usr")
+        children = usr.Children
+    except Exception:
+        return False
+    for i in range(children.Count):
+        child = children.ElementAt(i)
+        try:
+            text = str(child.Text).strip()
+        except Exception:
+            continue
+        # 코드가 그대로거나(=일치), 셀 안에 코드가 포함된 경우 모두 인정
+        if text == code or (code and code in text):
+            try:
+                child.setFocus()
+                return True
+            except Exception:
+                continue
+    return False
+
+
 def _f4_search_select(session, field_id, code):
     """필드에 F4 → 찾기(btn[71]) → 코드 검색 → 결과 선택.
 
-    코드는 유일하므로 검색 결과는 1건. 그 1건을 선택한다.
-    (값도움 창 구조에 따라 조정이 필요할 수 있어 테스트로 확인)
+    코드는 유일하므로 검색 결과는 1건. 그 줄에 커서를 올린 뒤 선택한다.
     """
     fld = session.findById(field_id)
     fld.setFocus()
@@ -59,7 +88,11 @@ def _f4_search_select(session, field_id, code):
     session.findById("wnd[2]/tbar[0]/btn[71]").press()     # 찾기 → wnd[3]
     session.findById("wnd[3]/usr/txtRSYSF-STRING").text = code
     session.findById("wnd[3]/tbar[0]/btn[0]").press()      # 검색 실행 → 결과 wnd[4]
-    session.findById("wnd[4]").sendVKey(2)                 # 결과(1건) 선택
+    # 결과 줄에 커서를 올린 뒤 선택(더블클릭=Enter). 못 찾으면 첫 줄 선택 시도.
+    _focus_code_row(session, "wnd[4]", code)
+    session.findById("wnd[4]").sendVKey(2)                 # 선택 → 값도움(wnd[2])으로
+    # 값도움 창에서도 같은 코드 줄에 커서를 올린 뒤 확정.
+    _focus_code_row(session, "wnd[2]", code)
     session.findById("wnd[2]").sendVKey(2)                 # 값도움에서 확정
 
 
