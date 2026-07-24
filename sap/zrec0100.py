@@ -79,7 +79,8 @@ def _focus_code_row(session, wnd, code):
 def _f4_search_select(session, field_id, code):
     """필드에 F4 → 찾기(btn[71]) → 코드 검색 → 결과 선택.
 
-    코드는 유일하므로 검색 결과는 1건. 그 줄에 커서를 올린 뒤 선택한다.
+    항목이 많아 한 화면에 다 안 보일 수 있는 필드(예: 동/읍/면/리)에 쓴다.
+    찾기로 한 건만 남긴 뒤, 그 줄에 커서를 올려 선택한다.
     """
     fld = session.findById(field_id)
     fld.setFocus()
@@ -94,6 +95,32 @@ def _f4_search_select(session, field_id, code):
     # 값도움 창에서도 같은 코드 줄에 커서를 올린 뒤 확정.
     _focus_code_row(session, "wnd[2]", code)
     session.findById("wnd[2]").sendVKey(2)                 # 값도움에서 확정
+
+
+def _f4_pick_direct(session, field_id, code):
+    """필드에 F4 → 값도움 팝업에서 코드 줄을 바로 선택.
+
+    항목이 적어 한 화면에 다 보이는 필드(예: 구/군 18개)에 쓴다.
+    "찾기(검색)" 단계 없이 팝업(wnd[2])에서 코드 줄을 찾아 바로 확정한다.
+
+    만약 팝업에서 코드 줄이 화면 밖이라 못 찾으면(스크롤 필요) →
+    안전하게 기존 "찾기 검색" 방식(_f4_search_select)으로 넘어간다.
+    """
+    fld = session.findById(field_id)
+    fld.setFocus()
+    fld.caretPosition = 0
+    session.findById("wnd[1]").sendVKey(4)                 # F4 → 값도움 wnd[2]
+    if _focus_code_row(session, "wnd[2]", code):
+        session.findById("wnd[2]").sendVKey(2)            # 코드 줄 바로 확정
+        return
+    # 화면에 안 보이면 찾기 버튼으로 검색해서 선택(폴백)
+    session.findById("wnd[2]/tbar[0]/btn[71]").press()     # 찾기 → wnd[3]
+    session.findById("wnd[3]/usr/txtRSYSF-STRING").text = code
+    session.findById("wnd[3]/tbar[0]/btn[0]").press()      # 검색 실행 → 결과 wnd[4]
+    _focus_code_row(session, "wnd[4]", code)
+    session.findById("wnd[4]").sendVKey(2)
+    _focus_code_row(session, "wnd[2]", code)
+    session.findById("wnd[2]").sendVKey(2)
 
 
 def _read_gongsa_no(session):
@@ -149,8 +176,8 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
     # 4) 팝업 입력 (순서 중요: 시/군 먼저 → 동)
     session.findById(POP_GSCD1).key = "A"     # 공사구분
     session.findById(POP_GYGUB).key = "20"    # 발주구분
-    _f4_search_select(session, POP_GU, sigun_code)     # 구/군 (먼저)
-    _f4_search_select(session, POP_DONG, dong_code)    # 동읍면리 (시/군 안에서)
+    _f4_pick_direct(session, POP_GU, sigun_code)       # 구/군 (18개, 팝업서 바로 선택)
+    _f4_search_select(session, POP_DONG, dong_code)    # 동읍면리 (많음 → 찾기 검색)
     session.findById(POP_HGYN).key = dig_permit         # 굴착허가 1/2
     session.findById(POP_GUCD1).text = permit_code      # 허가청 코드 직접
     session.findById(POP_CONFIRM).press()               # 팝업 확인
