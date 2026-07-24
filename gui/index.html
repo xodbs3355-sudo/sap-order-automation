@@ -1166,12 +1166,19 @@ function loadRequestList() {
       return;
     }
     /* 성공 → 표 채우기 + 하단 한 줄 */
-    var titles = (res.columns || []).map(function(c) { return c.title; }).join(" | ");
-    addLog("조회 열: " + titles, "info");   /* 첫 실행 시 실제 컬럼명 확인용 */
     var norm = normalizeRows(res.columns || [], res.rows || []);
     renderRows(norm);
-    if (el) { el.textContent = "의뢰공사 " + norm.length + "건 조회됨"; el.style.color = "#1f9d57"; }
-    addLog("의뢰공사 " + norm.length + "건 불러옴", "success");
+    if (norm.length === 0) {
+      /* 의뢰 대상 0건 = 정상 상황 (에러 아님) */
+      var msg = res.message || "조회된 의뢰공사가 없습니다.";
+      if (el) { el.textContent = msg; el.style.color = "#7a6850"; }
+      addLog(msg, "info");
+    } else {
+      var titles = (res.columns || []).map(function(c) { return c.title; }).join(" | ");
+      addLog("조회 열: " + titles, "info");   /* 첫 실행 시 실제 컬럼명 확인용 */
+      if (el) { el.textContent = "의뢰공사 " + norm.length + "건 조회됨"; el.style.color = "#1f9d57"; }
+      addLog("의뢰공사 " + norm.length + "건 불러옴", "success");
+    }
   });
 }
 </script>

@@ -27,6 +27,24 @@ def _open_and_query(session):
     session.findById("wnd[0]").sendVKey(8)   # F8 = 조회
 
 
+def _dismiss_info_popup(session):
+    """조회 결과가 없을 때 뜨는 정보 팝업(예: '조건에 맞는 데이터가 존재하지
+    않습니다')을 감지해 닫는다. 팝업이 있었으면 True, 없으면 False.
+    """
+    try:
+        popup = session.findById("wnd[1]")
+    except Exception:
+        return False   # 팝업 없음 = 정상(결과 있음)
+    try:
+        popup.sendVKey(0)   # 확인(Enter)
+    except Exception:
+        try:
+            session.findById("wnd[1]/tbar[0]/btn[0]").press()
+        except Exception:
+            pass
+    return True
+
+
 def fetch_request_list(session):
     """의뢰 공사 목록을 조회해 그리드 내용을 통째로 읽어 반환한다.
 
@@ -41,6 +59,13 @@ def fetch_request_list(session):
       (대량이면 스크롤 읽기 보강 필요 — TODO)
     """
     _open_and_query(session)
+
+    # 의뢰 대상이 없으면 SAP 가 '데이터 없음' 팝업을 띄우고 그리드는 생기지 않는다.
+    # → 팝업을 닫고 빈 목록(0건)으로 정상 반환한다.
+    if _dismiss_info_popup(session):
+        return {"columns": [], "rows": [], "row_count": 0,
+                "message": "조회 조건에 맞는 의뢰 대상이 없습니다."}
+
     grid = session.findById(GRID_ID)
 
     # 열 목록 + 제목
