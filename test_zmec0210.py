@@ -13,10 +13,10 @@
 import sys
 
 # ── 샘플 입력값 (테스트할 때 여기를 수정) ──────────────────
-GONGSA_NO = "2026A0062"     # 공사번호 (ZREC0100 에서 생성된 번호)
+GONGSA_NO = "2026A0045"     # 공사번호 (ZREC0100 에서 생성된 번호)
 ROAD_MATERIAL = "ASP"       # 도로재질 "ASP" 또는 "CONC"(=ASP 아님, 보도블럭 포함)
 LENGTH = 5                  # 연장(m) 1~10
-PLP = False                 # 기존관 PLP 여부 (True / False)
+PLP = True                  # 기존관 PLP 여부 (True / False)
 # ───────────────────────────────────────────────────────
 
 
