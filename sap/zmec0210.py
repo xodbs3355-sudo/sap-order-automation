@@ -156,9 +156,13 @@ def create_design_budget(session, gongsa_no, road_material, length, plp=False, c
     session.findById("wnd[0]").sendVKey(0)   # 1차 Enter (코드 확정)
     session.findById("wnd[0]").sendVKey(0)   # 2차 Enter (데이터 표시)
 
-    # 4) 설계잠금 해제
+    # 4) 설계잠금(SGLOCK) 처리 — 상태를 보고 필요할 때만 해제
+    #    실제 프로세스: 잠금(체크)된 상태 → 해제해야 편집 가능.
+    #    이미 해제돼 있으면(테스트처럼) 그대로 둔다.
     try:
-        session.findById(CHK_SGLOCK).selected = False
+        chk = session.findById(CHK_SGLOCK)
+        if chk.selected:          # 체크(잠금)되어 있을 때만
+            chk.selected = False  # 해제
     except Exception:
         pass
 
