@@ -709,7 +709,7 @@ tbody tr:nth-child(even):hover td.input-td {
   </div>
 
   <div class="bot">
-    <span class="bot-stat"></span>
+    <span class="bot-stat" id="filterStat"></span>
     <label class="test-lbl">
       <input type="checkbox" checked style="width:13px;height:13px;">
       TSRM 전송 건너뜀
@@ -1223,16 +1223,29 @@ function loadRequestList() {
     setLoadIcon("idle");
     var norm = normalizeRows(res.columns || [], res.rows || []);
     renderRows(norm);
+
+    /* 하단: 전체(조회) 대비 리스트업(10m 이하) 건수 표시 */
+    var total = (res.total_fetched != null) ? res.total_fetched : norm.length;
+    var excl  = (res.excluded != null) ? res.excluded : 0;
+    var fs = document.getElementById("filterStat");
+    if (fs) {
+      fs.textContent = "전체 " + total + "건 중 " + norm.length + "건 리스트업" +
+                       (excl > 0 ? " · 10m 초과 " + excl + "건 제외" : "");
+    }
+
     if (norm.length === 0) {
-      /* 의뢰 대상 0건 = 정상 상황 (에러 아님) */
-      var msg = res.message || "조회된 의뢰공사가 없습니다.";
+      /* 표시 대상 0건 (조회 0건이거나, 있어도 전부 10m 초과) */
+      var msg = (total > 0)
+        ? ("10m 이하 대상 없음 (전체 " + total + "건 모두 제외)")
+        : (res.message || "조회된 의뢰공사가 없습니다.");
       if (el) { el.textContent = msg; el.style.color = "#7a6850"; }
       addLog(msg, "info");
     } else {
       var titles = (res.columns || []).map(function(c) { return c.title; }).join(" | ");
       addLog("조회 열: " + titles, "info");   /* 첫 실행 시 실제 컬럼명 확인용 */
       if (el) { el.textContent = "의뢰공사 " + norm.length + "건 조회됨"; el.style.color = "#1f9d57"; }
-      addLog("의뢰공사 " + norm.length + "건 불러옴", "success");
+      addLog("의뢰공사 " + norm.length + "건 불러옴" +
+             (excl > 0 ? " (10m 초과 " + excl + "건 제외)" : ""), "success");
     }
   });
 }

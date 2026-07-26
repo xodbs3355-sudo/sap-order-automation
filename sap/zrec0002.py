@@ -20,6 +20,27 @@ GRID_ID = "wnd[0]/usr/cntlGRID1/shellcont/shell/shellcont[1]/shell"
 RECEIVE_BTN_ID = "wnd[0]/tbar[1]/btn[35]"      # 접수 (Ctrl+F11)
 CONFIRM_YES_ID = "wnd[1]/usr/btnBUTTON_1"       # "예"
 
+# 프로그램 대상: 63A · 10m 이하 전용. 조회 결과에서 이 범위만 남긴다.
+_MAX_LENGTH_M = 10
+
+
+def _find_col(columns, keyword):
+    """열 제목에 keyword 가 포함된 열의 id 를 찾는다(공백 무시). 없으면 None."""
+    key = keyword.replace(" ", "")
+    for c in columns:
+        if key in str(c.get("title", "")).replace(" ", ""):
+            return c["id"]
+    return None
+
+
+def _to_length(v):
+    """연장 값을 숫자(float)로 변환. 빈값/숫자아님이면 None."""
+    try:
+        s = str(v).replace(",", "").strip()
+        return float(s) if s != "" else None
+    except Exception:
+        return None
+
 
 def _open_and_query(session):
     """ZREC0002 로 이동해 F8(조회)까지 실행한다."""
@@ -64,6 +85,7 @@ def fetch_request_list(session):
     # → 팝업을 닫고 빈 목록(0건)으로 정상 반환한다.
     if _dismiss_info_popup(session):
         return {"columns": [], "rows": [], "row_count": 0,
+                "total_fetched": 0, "excluded": 0,
                 "message": "조회 조건에 맞는 의뢰 대상이 없습니다."}
 
     grid = session.findById(GRID_ID)
@@ -90,7 +112,29 @@ def fetch_request_list(session):
                 row[cid] = ""
         rows.append(row)
 
-    return {"columns": columns, "rows": rows, "row_count": row_count}
+    # 합계/소계 등 CMP 없는 행 제거
+    cmp_col = _find_col(columns, "CMP")
+    if cmp_col is not None:
+        data_rows = [r for r in rows if str(r.get(cmp_col, "")).strip() != ""]
+    else:
+        data_rows = rows
+    total = len(data_rows)
+
+    # 대상(63A·10m 이하)만 남긴다. 연장>10 또는 빈값/숫자아님 → 제외.
+    len_col = _find_col(columns, "연장")
+    if len_col is not None:
+        shown = []
+        for r in data_rows:
+            length = _to_length(r.get(len_col))
+            if length is not None and length <= _MAX_LENGTH_M:
+                shown.append(r)
+    else:
+        shown = data_rows   # 연장 열을 못 찾으면 필터 불가 → 전부 표시(안전)
+
+    return {"columns": columns, "rows": shown,
+            "row_count": len(shown),
+            "total_fetched": total,
+            "excluded": total - len(shown)}
 
 
 def receive_request(session, row_index):
