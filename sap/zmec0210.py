@@ -26,6 +26,8 @@
     달라질 수 있어, 첫 테스트에서 읽힌 값이 맞는지 확인이 필요하다.
 """
 
+import re
+
 from sap import connector
 from config_manager import ConfigManager
 
@@ -52,9 +54,12 @@ CELL_JAJAE = _T07 + "ctxtIT_07-JAJAE[2,%d]"         # 단가코드 (열2)
 CELL_SURA = _T07 + "txtIT_07-SURA[6,%d]"            # 수량 (열6)
 
 # TAB01 요소
-_T01 = TAB01 + "/ssubTAB_REF:SAPMZEC0210:1101/"
+SUB1101 = TAB01 + "/ssubTAB_REF:SAPMZEC0210:1101"  # TAB01 서브스크린(1101)
+_T01 = SUB1101 + "/"
 CHK_SCHK13 = _T01 + "chkZECT0213-SCHK13"            # 확인 체크박스
-LBL_SAFETY = _T01 + "lbl%#AUTOTEXT108"             # 산업안전보건관리비(자동계산)
+SAFETY_CAPTION = "산업안전보건관리비"                 # 이 제목 라벨과 같은 줄의 숫자 = 금액
+
+_AMOUNT_PAT = re.compile(r"^-?[\d,]+$")            # 금액(천단위 콤마 포함) 형식
 
 BTN_SAVE = "wnd[0]/tbar[0]/btn[11]"      # 저장 (Ctrl+S)
 BTN_BACK = "wnd[0]/tbar[0]/btn[3]"       # 뒤로 (F3)
@@ -106,8 +111,13 @@ def _save(session):
 
 
 def _read_safety_cost(session):
-    """TAB01의 산업안전보건관리비(자동계산) 라벨 값을 읽어 반환.
+    """TAB01의 산업안전보건관리비(자동계산) '금액'을 읽어 반환.
 
+    화면에는 '산업안전보건관리비(배관)' 제목 라벨과, 그 옆(같은 줄)에 금액이
+    별도 라벨로 표시된다. 제목의 자동생성 ID(AUTOTEXT###)는 화면마다 바뀔 수
+    있으므로 ID 를 직접 쓰지 않고, 서브스크린(1101)의 라벨들을 훑어서
+      ① '산업안전보건관리비' 제목 라벨의 세로 위치(Top)를 찾고
+      ② 같은 줄에 있는 숫자 형태 라벨(=금액)을 골라 반환한다.
     저장(계산) 후에만 값이 채워진다. 실패 시 None.
     """
     try:
@@ -115,9 +125,36 @@ def _read_safety_cost(session):
     except Exception:
         pass
     try:
-        return str(session.findById(LBL_SAFETY).text).strip()
+        children = session.findById(SUB1101).Children
     except Exception:
         return None
+
+    # 라벨 수집 + 제목(산업안전보건관리비) 줄의 세로 위치 찾기
+    labels = []            # (top, text)
+    caption_top = None
+    for i in range(children.Count):
+        try:
+            ch = children.ElementAt(i)
+            text = str(ch.Text).strip()
+            top = int(ch.Top)
+        except Exception:
+            continue
+        labels.append((top, text))
+        if SAFETY_CAPTION in text:
+            # '(배관)' 을 우선, 없으면 첫 제목 사용
+            if caption_top is None or text == SAFETY_CAPTION + "(배관)":
+                caption_top = top
+
+    if caption_top is None:
+        return None
+
+    # 같은 줄(Top 근사)에서 숫자 형태의 라벨(=금액)을 반환
+    for top, text in labels:
+        if abs(top - caption_top) <= 2 and SAFETY_CAPTION not in text:
+            cleaned = text.replace(" ", "")
+            if cleaned and _AMOUNT_PAT.match(cleaned):
+                return text
+    return None
 
 
 def create_design_budget(session, gongsa_no, road_material, length, plp=False, cfg=None):
