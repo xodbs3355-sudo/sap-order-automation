@@ -149,9 +149,12 @@ def create_design_budget(session, gongsa_no, road_material, length, plp=False, c
     rows.append((BWCD_FEE, CODE_SUBMIT, "1"))                  # 제출비용(수량1)
 
     # 3) ZMEC0210 진입 + 공사번호 조회
+    #    ※ 이 화면은 Enter 1번으로는 코드만 확정되고, 2번째 Enter라야
+    #      실제 데이터가 표시된다. → sendVKey(0) 을 2번 보낸다.
     connector.go_tcode(session, "ZMEC0210")
     session.findById(SEL_GSCD).text = gongsa_no
-    session.findById("wnd[0]").sendVKey(0)   # 조회
+    session.findById("wnd[0]").sendVKey(0)   # 1차 Enter (코드 확정)
+    session.findById("wnd[0]").sendVKey(0)   # 2차 Enter (데이터 표시)
 
     # 4) 설계잠금 해제
     try:
