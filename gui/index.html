@@ -535,6 +535,11 @@ tbody tr:nth-child(even):hover td.input-td {
 .load-ico svg { display: block; }
 .load-ico.spin { animation: load-spin 0.8s linear infinite; }
 @keyframes load-spin { to { transform: rotate(360deg); } }
+/* 불러오기 버튼 오른쪽 카운터: 선택 N건 / 전체 N건 · (상태메시지) */
+.load-stat { margin-left: 18px; font-size: 12px; font-weight: 600; color: #6b7488; vertical-align: middle; }
+.load-stat #selCount { color: #1f9d57; }
+/* 날짜 입력칸의 기본 달력 아이콘 숨김(우리 📅 버튼으로만 열기) */
+.date-inp::-webkit-calendar-picker-indicator { display: none; }
 
 /* ── 로그 모달 ── */
 .modal.log { width: 760px; height: 80vh; }
@@ -595,6 +600,7 @@ tbody tr:nth-child(even):hover td.input-td {
             <tr class="bulk-input-tr">
               <td colspan="7" style="padding:5px 12px;">
                 <button id="loadBtn" class="btn-out" onclick="loadRequestList()"><span id="loadIco" class="load-ico"><svg viewBox="0 0 24 24" width="15" height="15" fill="#1E9BF0"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></span>SAP 리스트 불러오기</button>
+                <span id="loadStat" class="load-stat"><span id="selCount">선택 0건</span> / <span id="totCount">전체 0건</span> · <span id="sapStatus">SAP 연결 미확인</span></span>
               </td>
               <td>
                 <select id="bulk-굴착"><option value=""></option><option>대상</option><option>비대상</option></select>
@@ -607,11 +613,11 @@ tbody tr:nth-child(even):hover td.input-td {
               </td>
               <td>
                 <div class="bulk-date-row">
-                  <input type="text" id="bulk-시작" placeholder="2026.01.01">
-                  <button class="cal-btn">📅</button>
+                  <input type="date" id="bulk-시작" class="date-inp">
+                  <button type="button" class="cal-btn" onclick="openPicker(this)">📅</button>
                   <span>~</span>
-                  <input type="text" id="bulk-종료" placeholder="2026.01.31">
-                  <button class="cal-btn">📅</button>
+                  <input type="date" id="bulk-종료" class="date-inp">
+                  <button type="button" class="cal-btn" onclick="openPicker(this)">📅</button>
                 </div>
               </td>
             </tr>
@@ -703,7 +709,7 @@ tbody tr:nth-child(even):hover td.input-td {
   </div>
 
   <div class="bot">
-    <span class="bot-stat">전체 3건 · 체크 3건 · <span id="sapStatus">SAP 연결 미확인</span></span>
+    <span class="bot-stat"></span>
     <label class="test-lbl">
       <input type="checkbox" checked style="width:13px;height:13px;">
       TSRM 전송 건너뜀
@@ -769,6 +775,22 @@ tbody tr:nth-child(even):hover td.input-td {
 </div>
 
 <script>
+/* 하단 카운터 갱신: 선택 N건 / 전체 N건 (실제 값). */
+function updateCounts() {
+  var all = document.querySelectorAll('#listBody tr').length;
+  var sel = document.querySelectorAll('#listBody input[type="checkbox"]:checked').length;
+  var s = document.getElementById('selCount'); if (s) s.textContent = '선택 ' + sel + '건';
+  var t = document.getElementById('totCount'); if (t) t.textContent = '전체 ' + all + '건';
+}
+
+/* 📅 버튼 클릭 시 옆의 날짜칸 달력을 연다. */
+function openPicker(btn) {
+  var inp = btn.previousElementSibling;
+  if (!inp) return;
+  if (inp.showPicker) { try { inp.showPicker(); return; } catch (e) {} }
+  inp.focus();
+}
+
 function toggleAll(masterCb) {
   var checkboxes = document.querySelectorAll('tbody input[type="checkbox"]');
   checkboxes.forEach(function(cb) {
@@ -777,6 +799,7 @@ function toggleAll(masterCb) {
       cb.dispatchEvent(new Event('change'));
     }
   });
+  updateCounts();
 }
 
 function toggleRow(cb) {
@@ -786,6 +809,7 @@ function toggleRow(cb) {
     if (cb.checked) td.classList.remove('input-disabled');
     else td.classList.add('input-disabled');
   });
+  updateCounts();
 }
 
 function applyBulk(applyAll) {
@@ -801,7 +825,7 @@ function applyBulk(applyAll) {
     if (cb && !cb.checked) { cb.checked = true; toggleRow(cb); }
 
     var selects = tr.querySelectorAll('td.input-td select');
-    var texts   = tr.querySelectorAll('td.input-td input[type="text"]');
+    var texts   = tr.querySelectorAll('td.input-td input.date-inp');
     if (val_굴착  && selects[0]) selects[0].value = val_굴착;
     if (val_허가청 && selects[1]) selects[1].value = val_허가청;
     if (val_업체  && selects[2]) selects[2].value = val_업체;
@@ -868,14 +892,15 @@ function renderRows(rows) {
     var tdVendor = inputTd(); tdVendor.appendChild(makeSelectLike('bulk-업체'));
     var tdDates = inputTd();
     tdDates.innerHTML = '<div class="date-cell">' +
-      '<input type="text" value=""><button class="cal-btn">📅</button>' +
+      '<input type="date" class="date-inp"><button type="button" class="cal-btn" onclick="openPicker(this)">📅</button>' +
       '<span>~</span>' +
-      '<input type="text" value=""><button class="cal-btn">📅</button></div>';
+      '<input type="date" class="date-inp"><button type="button" class="cal-btn" onclick="openPicker(this)">📅</button></div>';
 
     [tdChk, tdDot, tdCmp, tdName, tdLen, tdCost, tdDate,
      tdDig, tdPermit, tdVendor, tdDates].forEach(function(td) { tr.appendChild(td); });
     tbody.appendChild(tr);
   });
+  updateCounts();
 }
 
 /* SAP 조회 결과(열목록+행)를 우리 표 필드로 매핑한다(열 제목 기반 best-effort). */
