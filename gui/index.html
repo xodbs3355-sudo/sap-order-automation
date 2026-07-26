@@ -619,10 +619,10 @@ tbody tr:nth-child(even):hover td.input-td {
             <tr>
               <th style="width:28px;"><input type="checkbox" id="chk-all" style="width:13px;height:13px;" onchange="toggleAll(this)"></th>
               <th style="width:32px;">상태</th>
-              <th style="width:100px;">CMP No</th>
+              <th style="width:100px; text-align:right;">구간코드</th>
               <th style="min-width:215px;">구간명</th>
-              <th style="width:44px;">연장</th>
-              <th style="width:86px;">승인투자비</th>
+              <th style="width:44px; text-align:right;">연장</th>
+              <th style="width:86px; text-align:right;">승인투자비</th>
               <th style="width:74px;">의뢰일자</th>
               <th class="input-h" style="width:90px;">굴착허가</th>
               <th class="input-h" style="width:110px;">허가청</th>
@@ -857,10 +857,10 @@ function renderRows(rows) {
     tdDot.innerHTML = '<span class="dot dot-wait"></span>';
 
     var tdCmp = document.createElement('td');
-    tdCmp.className = 'cmp-no'; tdCmp.textContent = row.cmp || '';
+    tdCmp.className = 'cmp-no'; tdCmp.style.textAlign = 'right'; tdCmp.textContent = row.cmp || '';
     var tdName = document.createElement('td'); tdName.textContent = row.name || '';
-    var tdLen  = document.createElement('td'); tdLen.textContent  = row.length || '';
-    var tdCost = document.createElement('td'); tdCost.textContent = row.cost || '';
+    var tdLen  = document.createElement('td'); tdLen.style.textAlign  = 'right'; tdLen.textContent  = row.length || '';
+    var tdCost = document.createElement('td'); tdCost.style.textAlign = 'right'; tdCost.textContent = row.cost || '';
     var tdDate = document.createElement('td'); tdDate.textContent = row.date || '';
 
     var tdDig = inputTd();    tdDig.appendChild(makeSelectLike('bulk-굴착'));
