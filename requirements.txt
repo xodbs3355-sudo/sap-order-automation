@@ -1,0 +1,12 @@
+# SAP 공사 발주 자동화 프로그램 — 필요한 파이썬 라이브러리
+#
+# 설치 (프로젝트 폴더의 명령 프롬프트에서):
+#     py -m pip install -r requirements.txt
+#
+# 참고:
+#   - pywebview : 데스크탑 GUI 창을 띄우는 라이브러리 (main.py 에서 사용)
+#   - pywin32   : SAP GUI Scripting 연동(win32com). Windows 에서만 설치·동작하며,
+#                 SAP 자동화를 쓰지 않는 로컬(화면 확인용)에서는 없어도 창은 뜬다.
+
+pywebview>=5.0
+pywin32>=306; sys_platform == "win32"
