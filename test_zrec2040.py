@@ -52,7 +52,7 @@ def main():
 
     # 실행
     try:
-        res = zrec2040.create_approval(
+        msg = zrec2040.create_approval(
             session,
             gongsa_no=GONGSA_NO,
             gu_name=GU_NAME,
@@ -66,9 +66,7 @@ def main():
         return 1
 
     print("-" * 50)
-    print("[O] 처리 결과")
-    print("    안내 :", res.get("note"))
-    print("    상태바:", res.get("sbar") or "(메시지 없음)")
+    print("[O] 처리 완료. 상태 메시지 →", msg if msg else "(메시지 없음)")
     print("    SAP 화면에서 시행품의가 제대로 생성됐는지 확인해 주세요.")
     return 0
 

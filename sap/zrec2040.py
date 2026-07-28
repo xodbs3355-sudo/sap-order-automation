@@ -96,10 +96,9 @@ def create_approval(session, gongsa_no, gu_name, start_date, end_date, echk=Fals
         gu_name    : 구간명 (목적 자동생성용, 예: "춘천시 후평동 74-19번지 인입공급관")
         start_date : 공사기간 시작 ("YYYY-MM-DD" 등)
         end_date   : 공사기간 종료
-        echk       : 전자시행품의 여부(True 면 전자 → 상신 웹 팝업이 뜬다)
-    반환(dict):
-        {"echk": bool, "note": 사용자안내, "sbar": 상태바메시지,
-         "purpose": 목적, "period": 작업기간}
+        echk       : 전자시행품의 여부(True 면 전자 → SAP 가 상신 웹 팝업을 띄운다)
+    반환:
+        처리 후 상태바 메시지(str) 또는 None.
     """
     purpose = make_purpose(gu_name)
     period = fmt_period(start_date, end_date)
@@ -161,10 +160,4 @@ def create_approval(session, gongsa_no, gu_name, start_date, end_date, echk=Fals
         except Exception:
             pass
 
-    if echk:
-        note = "전자시행품의 대상 — 웹 시행품의서 페이지가 떴습니다. 웹에서 직접 상신하세요."
-    else:
-        note = "시행품의 생성 완료 (비전자)."
-
-    return {"echk": bool(echk), "note": note, "sbar": sbar,
-            "purpose": purpose, "period": period}
+    return sbar
