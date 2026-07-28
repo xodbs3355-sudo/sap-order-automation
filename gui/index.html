@@ -394,7 +394,9 @@ tbody tr:nth-child(even):hover td.input-td {
 
 /* ── 입력 필드 비활성 상태 ── */
 .input-disabled select,
-.input-disabled input[type="text"] {
+.input-disabled input[type="text"],
+.input-disabled input.date-inp,
+.input-disabled input[type="checkbox"] {
   opacity: 0.5;
   pointer-events: none;
   background: #f0f2f5;
@@ -637,7 +639,7 @@ tbody tr:nth-child(even):hover td.input-td {
               <th class="input-h" style="width:110px;">허가청</th>
               <th class="input-h" style="width:110px;">시공업체</th>
               <th class="input-h" style="width:165px;">공사기간</th>
-              <th class="input-h" style="width:100px;">SAP 품의</th>
+              <th class="input-h" style="width:85px;">SAP품의</th>
             </tr>
           </thead>
           <tbody id="listBody"></tbody>
@@ -834,7 +836,10 @@ function applyBulk(applyAll) {
     if (val_굴착  && selects[0]) selects[0].value = val_굴착;
     if (val_허가청 && selects[1]) selects[1].value = val_허가청;
     if (val_업체  && selects[2]) selects[2].value = val_업체;
-    if (val_품의  && selects[3]) selects[3].value = val_품의;
+    if (val_품의) {
+      var sapChk = tr.querySelector('td.input-td input.sap-chk');
+      if (sapChk) sapChk.checked = (val_품의 === '예');
+    }
     if (val_시작  && texts[0])   texts[0].value   = val_시작;
     if (val_종료  && texts[1])   texts[1].value   = val_종료;
   });
@@ -902,7 +907,11 @@ function renderRows(rows) {
       '<span>~</span>' +
       '<input type="date" class="date-inp"><button type="button" class="cal-btn" onclick="openPicker(this)">📅</button></div>';
 
-    var tdSap = inputTd(); tdSap.appendChild(makeSelectLike('bulk-품의'));   /* SAP 품의(전자시행품의) 예/아니오 */
+    var tdSap = inputTd(); tdSap.style.textAlign = 'center';
+    var sapChk = document.createElement('input');
+    sapChk.type = 'checkbox'; sapChk.className = 'sap-chk';
+    sapChk.style.width = '13px'; sapChk.style.height = '13px';
+    tdSap.appendChild(sapChk);   /* SAP 품의(전자시행품의) 체크박스 */
 
     [tdChk, tdDot, tdCmp, tdName, tdLen, tdCost, tdDate,
      tdDig, tdPermit, tdVendor, tdDates, tdSap].forEach(function(td) { tr.appendChild(td); });
