@@ -117,9 +117,11 @@ def main() -> None:
         title="SAP Work Order Automation",
         url=get_gui_path(),
         js_api=api,
-        width=1440,
+        width=1560,
         height=800,
-        min_size=(1200, 700),   # 이 크기 아래로는 축소 불가(축소 시 레이아웃 깨짐 방지)
+        # 표(최소 약 1252px) + 실행단계 패널(250px)이 잘리지 않는 최소 창 폭.
+        # 이 아래로는 축소 불가 → 공사기간 등 열이 잘리지 않는다.
+        min_size=(1530, 700),
         resizable=True,
     )
     webview.start()
