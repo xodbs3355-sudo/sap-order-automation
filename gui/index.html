@@ -618,7 +618,7 @@ tbody tr:nth-child(even):hover td.input-td {
               <td style="background:#f8f9fb; border-bottom:1px solid #dde0e8; border-left:none; border-right:none; padding:5px 5px; text-align:center;">
                 <span class="bulk-label">일괄적용</span>
               </td>
-              <td colspan="4" style="background:#f8f9fb; border-bottom:1px solid #dde0e8; text-align:right; padding:5px 8px;">
+              <td colspan="3" style="background:#f8f9fb; border-bottom:1px solid #dde0e8; text-align:right; padding:5px 8px;">
                 <button class="bulk-btn bulk-btn-sel" onclick="applyBulk(false)">선택 적용</button>
                 &nbsp;
                 <button class="bulk-btn bulk-btn-all" onclick="applyBulk(true)">전체 적용</button>
@@ -648,9 +648,7 @@ tbody tr:nth-child(even):hover td.input-td {
                   <button type="button" class="cal-btn" onclick="openPicker(this)">📅</button>
                 </div>
               </td>
-              <td style="text-align:center;">
-                <input type="checkbox" id="bulk-품의" style="width:13px;height:13px;">
-              </td>
+              <!-- [메모] SAP품의 일괄 체크박스 자리 — 현재 의뢰부서=처리부서라 생략. 부서 분리 시 복원. -->
             </tr>
             <!-- 컬럼 헤더 행 -->
             <tr>
@@ -665,7 +663,7 @@ tbody tr:nth-child(even):hover td.input-td {
               <th class="input-h" style="width:110px;">허가청</th>
               <th class="input-h" style="width:110px;">시공업체</th>
               <th class="input-h" style="width:165px;">공사기간</th>
-              <th class="input-h" style="width:85px;">SAP품의</th>
+              <!-- [메모] SAP품의(전자시행품의) 열 자리 — 현재 의뢰부서=처리부서라 생략. 부서 분리 시 복원. -->
             </tr>
           </thead>
           <tbody id="listBody"></tbody>
@@ -863,7 +861,6 @@ function applyBulk(applyAll) {
   var val_굴착  = document.getElementById('bulk-굴착').value;
   var val_허가청 = document.getElementById('bulk-허가청').value;
   var val_업체  = document.getElementById('bulk-업체').value;
-  var chk_품의  = document.getElementById('bulk-품의').checked;
   var val_시작  = document.getElementById('bulk-시작').value;
   var val_종료  = document.getElementById('bulk-종료').value;
 
@@ -877,8 +874,6 @@ function applyBulk(applyAll) {
     if (val_굴착  && selects[0]) selects[0].value = val_굴착;
     if (val_허가청 && selects[1]) selects[1].value = val_허가청;
     if (val_업체  && selects[2]) selects[2].value = val_업체;
-    var sapChk = tr.querySelector('td.input-td input.sap-chk');
-    if (sapChk) sapChk.checked = chk_품의;
     if (val_시작  && texts[0])   texts[0].value   = val_시작;
     if (val_종료  && texts[1])   texts[1].value   = val_종료;
   });
@@ -946,14 +941,11 @@ function renderRows(rows) {
       '<span>~</span>' +
       '<input type="date" class="date-inp"><button type="button" class="cal-btn" onclick="openPicker(this)">📅</button></div>';
 
-    var tdSap = inputTd(); tdSap.style.textAlign = 'center';
-    var sapChk = document.createElement('input');
-    sapChk.type = 'checkbox'; sapChk.className = 'sap-chk';
-    sapChk.style.width = '13px'; sapChk.style.height = '13px';
-    tdSap.appendChild(sapChk);   /* SAP 품의(전자시행품의) 체크박스 */
+    /* [메모] SAP품의(전자시행품의) 행 체크박스 자리 — 현재 의뢰부서=처리부서라 생략.
+       향후 부서 분리 시 이 열/기능 복원(ZREC2040 create_approval 의 echk 인자 활용). */
 
     [tdChk, tdDot, tdCmp, tdName, tdLen, tdCost, tdDate,
-     tdDig, tdPermit, tdVendor, tdDates, tdSap].forEach(function(td) { tr.appendChild(td); });
+     tdDig, tdPermit, tdVendor, tdDates].forEach(function(td) { tr.appendChild(td); });
     tbody.appendChild(tr);
   });
   updateCounts();
