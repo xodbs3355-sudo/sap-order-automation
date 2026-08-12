@@ -172,7 +172,8 @@ td input[readonly] {
 .date-cell input {
   flex: 1;
   min-width: 72px;
-  font-size: 11px;
+  font-family: inherit;   /* 승인투자비 금액과 같은 앱 폰트 사용 */
+  font-size: 12px;
   padding: 4px 7px;
   border: 1px solid #c0c8d8;
   border-radius: 6px;
@@ -369,10 +370,11 @@ td input[readonly] {
   align-items: center;
   gap: 3px;
 }
-.bulk-date-row input[type="text"] {
+.bulk-date-row input.date-inp {
   flex: 1;
   min-width: 0;
-  font-size: 11px;
+  font-family: inherit;   /* 리스트 날짜칸과 동일한 앱 폰트 */
+  font-size: 12px;
   padding: 3px 5px;
   border: 1px solid #c0c8d8;
   border-radius: 6px;
@@ -658,12 +660,12 @@ tbody tr:nth-child(even):hover td.input-td {
               <th style="width:32px;">상태</th>
               <th style="width:100px;">구간코드</th>
               <th style="min-width:300px;">구간명</th>
-              <th style="width:44px;">연장</th>
+              <th style="width:55px;">연장</th>
               <th style="width:86px;">승인투자비</th>
               <th style="width:74px;">의뢰일자</th>
-              <th class="input-h" style="width:90px;">굴착허가</th>
-              <th class="input-h" style="width:110px;">허가청</th>
-              <th class="input-h" style="width:110px;">시공업체</th>
+              <th class="input-h" style="width:120px;">굴착허가</th>
+              <th class="input-h" style="width:120px;">허가청</th>
+              <th class="input-h" style="width:120px;">시공업체</th>
               <th class="input-h" style="width:165px;">공사기간</th>
               <!-- [메모] SAP품의(전자시행품의) 열 자리 — 현재 의뢰부서=처리부서라 생략. 부서 분리 시 복원. -->
             </tr>
