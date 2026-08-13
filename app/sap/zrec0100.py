@@ -210,40 +210,66 @@ def _scan_grid(grid):
     return None
 
 
-def _find_gongsa_no_once(session):
-    """현재 화면에서 공사번호 형식 값을 한 번 찾아본다(없으면 None).
+def _is_candidate(ctrl):
+    """트리/그리드일 가능성이 있는 컨트롤인가?
 
-    ① 알려진 주소(GONGSA_TREE) 먼저 시도(빠른 경로)
-    ② 안 되면 창 전체의 트리/그리드를 훑는다(주소 하드코딩 의존 제거)
+    SAP 의 트리·그리드는 대부분 Type 이 'GuiShell' 이다(하위 SubType 이 Tree/GridView).
+    그래서 'Tree'/'Grid' 라는 타입명만 보면 놓친다 → GuiShell 도 후보에 포함한다.
     """
-    # ① 빠른 경로
-    try:
-        v = _scan_tree(session.findById(GONGSA_TREE))
-        if v:
-            return v
-    except Exception:
-        pass
-    # ② 전체 훑기
+    t = _ctype(ctrl)
+    return t == "GuiShell" or "Tree" in t or "Grid" in t
+
+
+def _collect_candidates(session):
+    """창(wnd[0]) 아래의 트리/그리드 후보(GuiShell 등)를 한 번의 순회로 모은다."""
+    cands = []
     try:
         root = session.findById("wnd[0]")
     except Exception:
-        return None
+        return cands
     for ctrl in _walk(root):
-        t = _ctype(ctrl)
-        if "Tree" in t:
-            v = _scan_tree(ctrl)
-            if v:
-                return v
-        elif "Grid" in t:
-            v = _scan_grid(ctrl)
-            if v:
-                return v
+        if _is_candidate(ctrl):
+            cands.append(ctrl)
+    return cands
+
+
+def _scan_candidates(cands):
+    """후보 컨트롤들에서 공사번호 형식 값을 찾는다(트리·그리드 양쪽 시도)."""
+    for c in cands:
+        v = _scan_tree(c)
+        if v:
+            return v
+        v = _scan_grid(c)
+        if v:
+            return v
     return None
 
 
 def _dump_screen(session):
-    """진단용: 화면의 트리/그리드 내용과 상태바를 로그로 남긴다(원인 확정용)."""
+    """진단용: 화면 상태를 상세히 로그로 남긴다(어느 화면·어떤 컨트롤인지 확정용)."""
     _log("── 공사번호 못 찾음 · 화면 진단 덤프 ──", "warn")
+    # 어느 화면인지
+    try:
+        info = session.Info
+        _log("  트랜잭션=%s · 프로그램=%s · 화면=%s"
+             % (info.Transaction, info.Program, info.ScreenNumber), "info")
+    except Exception:
+        pass
+    try:
+        _log("  창 제목: %s" % str(session.findById("wnd[0]").Text).strip(), "info")
+    except Exception:
+        pass
+    # 팝업이 떠 있으면(=화면을 벗어났을 수 있음) 알린다
+    ptext = _popup_text(session)
+    if ptext:
+        _log("  ⚠ 팝업(wnd[1]) 열려 있음: %s" % ptext[:120], "warn")
+    else:
+        _log("  팝업 없음", "info")
+    try:
+        _log("  상태바: %s" % str(session.findById("wnd[0]/sbar").text).strip(), "info")
+    except Exception:
+        pass
+    # 화면의 모든 GuiShell/트리/그리드 나열 + 내용 일부
     try:
         root = session.findById("wnd[0]")
     except Exception:
@@ -251,70 +277,136 @@ def _dump_screen(session):
         return
     found = 0
     for ctrl in _walk(root):
-        t = _ctype(ctrl)
-        if "Tree" not in t and "Grid" not in t:
+        if not _is_candidate(ctrl):
             continue
         found += 1
+        t = _ctype(ctrl)
         try:
             cid = str(ctrl.Id)
         except Exception:
             cid = "?"
-        _log("  [%s] %s" % (t, cid), "info")
-        if "Tree" in t:
-            try:
-                cols = list(ctrl.GetColumnNames())
-                keys = list(ctrl.GetAllNodeKeys())
-                _log("     열=%s · 행수=%d" % (cols, len(keys)), "info")
-                for nk in keys[:8]:
-                    vals = []
-                    for cn in cols:
-                        try:
-                            vals.append("%s=%s" % (cn, str(ctrl.GetItemText(nk, cn)).strip()))
-                        except Exception:
-                            pass
-                    _log("     · %s" % " | ".join(vals), "info")
-            except Exception as e:
-                _log("     (트리 읽기 실패: %s)" % e, "info")
-        else:
-            try:
-                cols = list(ctrl.ColumnOrder)
-                rows = ctrl.RowCount
-                _log("     열=%s · 행수=%d" % (cols, rows), "info")
-                for r in range(min(rows, 8)):
-                    vals = []
-                    for cid2 in cols:
-                        try:
-                            vals.append("%s=%s" % (cid2, str(ctrl.GetCellValue(r, cid2)).strip()))
-                        except Exception:
-                            pass
-                    _log("     · %s" % " | ".join(vals), "info")
-            except Exception as e:
-                _log("     (그리드 읽기 실패: %s)" % e, "info")
+        sub = ""
+        try:
+            sub = str(ctrl.SubType)
+        except Exception:
+            pass
+        _log("  [%s%s] %s" % (t, ("/" + sub) if sub else "", cid), "info")
+        # 트리로 시도
+        try:
+            cols = list(ctrl.GetColumnNames())
+            keys = list(ctrl.GetAllNodeKeys())
+            _log("     (트리) 열=%s · 행수=%d" % (cols, len(keys)), "info")
+            for nk in keys[:6]:
+                vals = []
+                for cn in cols:
+                    try:
+                        vals.append("%s=%s" % (cn, str(ctrl.GetItemText(nk, cn)).strip()))
+                    except Exception:
+                        pass
+                _log("      · %s" % " | ".join(vals), "info")
+            continue
+        except Exception:
+            pass
+        # 그리드로 시도
+        try:
+            cols = list(ctrl.ColumnOrder)
+            rows = ctrl.RowCount
+            _log("     (그리드) 열=%s · 행수=%d" % (cols, rows), "info")
+            for r in range(min(rows, 6)):
+                vals = []
+                for cid2 in cols:
+                    try:
+                        vals.append("%s=%s" % (cid2, str(ctrl.GetCellValue(r, cid2)).strip()))
+                    except Exception:
+                        pass
+                _log("      · %s" % " | ".join(vals), "info")
+        except Exception:
+            pass
     if not found:
-        _log("  트리/그리드 컨트롤을 찾지 못했습니다.", "warn")
+        _log("  GuiShell/트리/그리드 후보를 하나도 못 찾음 → 예상과 다른 화면일 수 있음", "warn")
+
+
+def _read_gongsa_no(session, retries=6, wait=0.5):
+    """생성된 공사번호(숫자4+영문1+숫자4)를 읽어 반환. 실패 시 None.
+
+    - SAP 트리/그리드는 Type 이 'GuiShell' 이라, 화면의 GuiShell 후보를 모아
+      트리·그리드 양쪽으로 값을 읽는다(주소·타입 하드코딩 의존 제거).
+    - 저장 직후 늦게 그려질 수 있어 잠깐 기다렸다 재시도(순회 비용을 줄이려
+      후보는 한 번 모으고, 중간에 한 번만 다시 모은다).
+    - 끝내 못 찾으면 화면을 상세 진단 덤프.
+    """
+    # 빠른 경로: 알려진 주소 먼저
     try:
-        _log("  상태바: %s" % str(session.findById("wnd[0]/sbar").text).strip(), "info")
+        c = session.findById(GONGSA_TREE)
+        v = _scan_tree(c) or _scan_grid(c)
+        if v:
+            return v
     except Exception:
         pass
 
-
-def _read_gongsa_no(session, retries=5, wait=0.3):
-    """생성된 공사번호(숫자4+영문1+숫자4)를 읽어 반환. 실패 시 None.
-
-    - 화면의 모든 트리/그리드를 훑어 형식에 맞는 값을 찾는다(주소 의존 제거).
-    - 저장 직후 트리가 늦게 그려질 수 있어, 잠깐 기다렸다 최대 retries 회 재시도.
-    - 끝내 못 찾으면 화면 내용을 진단 로그로 덤프해 원인을 남긴다.
-      (그래도 안 되면: 다른 T-code에서 구간코드로 조회해 읽는 폴백을 추가 예정)
-    """
+    cands = _collect_candidates(session)
     for attempt in range(retries):
-        v = _find_gongsa_no_once(session)
+        v = _scan_candidates(cands)
         if v:
             if attempt:
                 _log("공사번호 읽음(재시도 %d회 후): %s" % (attempt, v), "info")
             return v
         time.sleep(wait)
+        if attempt == 2:   # 트리가 늦게 생겼을 수 있어 한 번 더 모은다
+            cands = _collect_candidates(session)
     _dump_screen(session)
     return None
+
+
+def _popup_text(session):
+    """wnd[1](팝업)의 제목+본문 텍스트를 모아 반환. 팝업 없으면 ''."""
+    try:
+        top = session.findById("wnd[1]")
+    except Exception:
+        return ""
+    parts = []
+    try:
+        parts.append(str(top.Text))
+    except Exception:
+        pass
+    for c in _walk(top):
+        try:
+            t = str(c.Text).strip()
+            if t:
+                parts.append(t)
+        except Exception:
+            pass
+    return " ".join(parts)
+
+
+def _handle_save_popups(session, max_popups=5):
+    """저장 후 뜨는 팝업을 텍스트에 따라 안전하게 처리한다.
+
+    - '정보조회/이동' 팝업(정보조회로 이동하시겠습니까?) → 아니오(OPTION2): 화면 유지
+    - 그 외(저장하시겠습니까? 등)                        → 예(OPTION1)
+    이렇게 하면 팝업 개수·순서가 달라도 실수로 '예 → 화면 이동'이 되지 않는다.
+    """
+    for _ in range(max_popups):
+        try:
+            session.findById("wnd[1]")
+        except Exception:
+            return   # 더 이상 팝업 없음
+        body = _popup_text(session)
+        stay = ("이동" in body) or ("정보조회" in body)
+        pressed = False
+        try:
+            btn = "wnd[1]/usr/btnSPOP-OPTION2" if stay else "wnd[1]/usr/btnSPOP-OPTION1"
+            session.findById(btn).press()
+            pressed = True
+            _log("팝업 처리: '%s' → %s" % (body[:40], "아니오" if stay else "예"), "info")
+        except Exception:
+            pass
+        if not pressed:
+            # 표준 SPOP 버튼이 아니면 Enter(확인)로 닫기
+            try:
+                session.findById("wnd[1]").sendVKey(0)
+            except Exception:
+                return
 
 
 def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_permit):
@@ -353,16 +445,10 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
     session.findById(POP_GUCD1).text = permit_code      # 허가청 코드 직접
     session.findById(POP_CONFIRM).press()               # 팝업 확인
 
-    # 5) 저장 → 예 → 아니오
+    # 5) 저장 → 팝업 텍스트에 따라 안전 처리
+    #    (정보조회 이동?→아니오 로 화면 유지, 저장?→예. 팝업 순서/개수 달라도 안전)
     session.findById(BTN_SAVE).press()
-    try:
-        session.findById(POP_YES).press()   # "마스터 정보 생성. 저장?" → 예
-    except Exception:
-        pass
-    try:
-        session.findById(POP_NO).press()    # "정보조회 이동?" → 아니오
-    except Exception:
-        pass
+    _handle_save_popups(session)
 
-    # 6) 우측 트리에서 공사번호 읽기
+    # 6) 화면에서 공사번호 읽기(GuiShell 트리/그리드 포함 탐색)
     return _read_gongsa_no(session)

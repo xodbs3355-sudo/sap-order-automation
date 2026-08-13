@@ -58,6 +58,17 @@ def _short_name(name):
     return s or name
 
 
+# 시작 단계 타이밍 저장(화면 로그가 준비되면 몰아서 보여줌 — 파일 안 열어도 됨)
+_LAPS = []
+
+
+def _lap(label):
+    """시작 단계별 경과시간을 기록(파일 로그) + 화면용으로 저장."""
+    s = "⏱ %s · +%.2f초" % (label, time.perf_counter() - _START)
+    _LAPS.append(s)
+    applog.info(s)
+
+
 def get_gui_path() -> str:
     """app/gui/index.html 의 절대 경로를 반환한다."""
     return os.path.join(_APP_DIR, "gui", "index.html")
@@ -103,6 +114,9 @@ class Api:
         '창 생성 완료' 로그와 이 값의 차이 = WebView(브라우저) 부팅+렌더 시간.
         """
         applog.success("⏱ 화면 표시 완료 · 시작~렌더 %.2f초" % (time.perf_counter() - _START))
+        # 시작 단계 타이밍을 화면 로그(처리 로그 창)에도 몰아서 보여준다(파일 안 열어도 됨).
+        for s in _LAPS:
+            self._js("addLog", s, "info")
         return True
 
     # ── 단가표 ─────────────────────────────────────────────
@@ -380,9 +394,9 @@ class Api:
 def main() -> None:
     """pywebview 창을 생성하고 GUI 를 실행한다."""
     applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
-    applog.info("⏱ 모듈 로드 완료 · +%.2f초" % (time.perf_counter() - _START))
+    _lap("모듈 로드 완료")
     api = Api()
-    applog.info("⏱ 설정 로드 완료 · +%.2f초" % (time.perf_counter() - _START))
+    _lap("설정 로드 완료")
     window = webview.create_window(
         title="SAP Work Order Automation",
         url=get_gui_path(),
@@ -397,8 +411,7 @@ def main() -> None:
     # 화면 연결: 파이썬 로그를 처리 로그 창에도 실시간으로 찍는다.
     api.window = window
     applog.set_gui_emit(lambda m, l: api._js("addLog", m, l))
-    applog.info("⏱ 창 생성 완료 · +%.2f초 (이후 WebView 부팅+화면 렌더)"
-                % (time.perf_counter() - _START))
+    _lap("창 생성 완료 (이후 WebView 부팅+화면 렌더)")
     webview.start()
 
 
