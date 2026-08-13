@@ -1347,9 +1347,11 @@ function loadRequestList() {
     var exclR = (res.excluded_region != null) ? res.excluded_region : 0;
     var fs = document.getElementById("filterStat");
     if (fs) {
+      var parts = [];
+      if (exclR > 0) parts.push("권역 외 " + exclR + "건 제외");
+      if (excl > 0) parts.push("10m 초과 " + excl + "건 제외");
       fs.textContent = "전체 " + total + "건 중 " + norm.length + "건 리스트업" +
-                       (exclR > 0 ? " · 권역 외 " + exclR + "건 제외" : "") +
-                       (excl > 0 ? " · 10m 초과 " + excl + "건 제외" : "");
+                       (parts.length ? " (" + parts.join(" · ") + ")" : "");
     }
 
     if (norm.length === 0) {
