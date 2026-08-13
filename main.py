@@ -40,6 +40,30 @@ _logging.getLogger("pywebview").setLevel(_logging.CRITICAL)
 _STEP_CODES = ["ZREC0002", "ZREC0100", "ZMEC0210", "ZREC2030", "ZREC2040", "ZREC0208"]
 _STEP_INDEX = {code: i for i, code in enumerate(_STEP_CODES)}
 
+# 리포트 표시용 단계 한글명
+_STEP_KO = {"ZREC0002": "공사의뢰 접수", "ZREC0100": "공사번호 생성",
+            "ZMEC0210": "설계예산서 작성", "ZREC2030": "발주구간 생성",
+            "ZREC2040": "시행품의 생성", "ZREC0208": "발주서 작성"}
+
+
+def _friendly_cause(cause):
+    """SAP/COM 예외 등 기술적 메시지를 사람이 읽을 한글 설명으로 바꾼다.
+
+    (원문 기술 메시지는 로그에 남고, 리포트 '비고'에는 이 깔끔한 한글만 쓴다.)
+    """
+    s = str(cause)
+    if ("could not be found" in s) or ("control could" in s):
+        return "SAP 화면에서 필요한 항목을 찾지 못함(화면 구성 차이 가능)"
+    low = s.lower()
+    if ("연결" in s) or ("sapgui" in low) or ("session" in low) or ("connection" in low):
+        return "SAP 연결/세션 문제"
+    if "공사번호" in s:
+        return "공사번호를 읽지 못함"
+    # 코드형/장문(괄호·숫자코드 뒤섞임)이면 일반 문구로 정리
+    if len(s) > 50 or ("(" in s and ")" in s):
+        return "SAP 처리 중 오류"
+    return s
+
 
 def _digits(s):
     """문자열에서 숫자만 뽑아 int. 없으면 None. ('3,651,000원'→3651000)"""
@@ -318,7 +342,9 @@ class Api:
             reg = work["_region"]
             lp = work["_price"]
             rep["dong"] = "%s(%s)" % (reg["dong_name"], reg["dong_code"])
-            rep["material"] = "%s %sm%s" % (work["road"], work["length"],
+            # 재질 표시: ASP 는 그대로, 그 외(CONC=보도블럭 겸용)는 'ASP 外'로 표기
+            road_disp = "ASP" if work["road"] == "ASP" else "ASP 外"
+            rep["material"] = "%s %sm%s" % (road_disp, work["length"],
                                             " · PLP" if work["plp"] else "")
             rep["vendor"] = work["_vendor_name"]
             applog.info(
@@ -358,13 +384,14 @@ class Api:
                     self._js("runStep", idx, "fail")
                 self._js("runWork", i, "fail", sname)
                 rep["status"] = "fail"
-                rep["reason"] = "%s 단계: %s" % (e.step, e.cause)
+                rep["reason"] = "%s 단계에서 실패 — %s (자세한 내용은 로그 참조)" % (
+                    _STEP_KO.get(e.step, e.step), _friendly_cause(e.cause))
                 applog.exc("[%d/%d] %s — %s 단계 실패: %s"
                            % (i + 1, len(rows), cmp, e.step, e.cause))
             except Exception as e:
                 self._js("runWork", i, "fail", sname)
                 rep["status"] = "fail"
-                rep["reason"] = "예상치 못한 오류: %s" % e
+                rep["reason"] = "예상치 못한 오류 (자세한 내용은 로그 참조)"
                 applog.exc("[%d/%d] %s — 예상치 못한 오류: %s"
                            % (i + 1, len(rows), cmp, e))
             results.append(rep)

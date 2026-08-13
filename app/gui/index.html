@@ -75,7 +75,10 @@ body {
   letter-spacing: 0.5px;
   line-height: 1.4;
 }
-.topbar-btns { display: flex; gap: 8px; }
+.topbar-btns { display: flex; align-items: center; gap: 8px; }
+/* 우측 패널(250px) 폭에 맞춘 영역 — '단가표 관리'는 맨 오른쪽, '선택 건 실행'은
+   그 왼쪽(=표의 오른쪽 끝, 전체적용 버튼과 수직 정렬)에 오도록 한다. */
+.topbar-right-zone { width: 231px; flex-shrink: 0; display: flex; justify-content: flex-end; }
 .btn-out {
   padding: 7px 14px;
   font-size: 12px;
@@ -638,8 +641,10 @@ tbody tr:nth-child(even):hover td.input-td {
       <span class="title-text">공사 발주 자동화 프로그램<span class="title-sub">(63A &amp; 10m이하 수요가배관 전용)</span></span>
     </div>
     <div class="topbar-btns">
-      <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
       <button id="runBtn" class="btn-main" onclick="runSelected()">▶ 선택 건 실행</button>
+      <div class="topbar-right-zone">
+        <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
+      </div>
     </div>
   </div>
 
