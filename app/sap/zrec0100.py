@@ -21,8 +21,14 @@
 """
 
 import re
+import time
 
 from sap import connector
+
+try:
+    import applog  # 진단 로그(파일+화면). 없어도 동작하도록 감싼다.
+except Exception:  # pragma: no cover
+    applog = None
 
 # ── 화면 요소 주소 (녹화 실측) ─────────────────────────────
 SEL_CMP_FIELD = "wnd[0]/usr/ctxtSO_ZSEC-LOW"                       # 선택화면 CMP 입력
@@ -43,7 +49,7 @@ BTN_SAVE = "wnd[0]/tbar[0]/btn[11]"           # 저장 (Ctrl+S)
 POP_YES = "wnd[1]/usr/btnSPOP-OPTION1"        # "예"
 POP_NO = "wnd[1]/usr/btnSPOP-OPTION2"         # "아니오"
 
-_GONGSA_PAT = re.compile(r"^\d{4}[A-Z]\d+$")   # 공사번호 형식 예: 2026A0043
+_GONGSA_PAT = re.compile(r"^\d{4}[A-Z]\d{4}$")   # 공사번호 형식: 숫자4+영문1+숫자4 (예: 2026A0063)
 
 
 def _focus_code_row(session, wnd, code):
@@ -123,18 +129,58 @@ def _f4_pick_direct(session, field_id, code):
     session.findById("wnd[2]").sendVKey(2)
 
 
-def _read_gongsa_no(session):
-    """우측 공사번호 트리에서 공사번호(YYYY+영문+숫자)를 읽어 반환.
+def _log(msg, level="info"):
+    """진단 로그(applog 있으면 파일+화면, 없으면 무시)."""
+    if applog:
+        try:
+            applog.log(msg, level)
+        except Exception:
+            pass
 
-    컬럼명을 몰라도 되도록, 모든 노드·컬럼을 훑어 형식에 맞는 값을 찾는다.
-    실패 시 None.
+
+def _walk(node):
+    """컨트롤 트리를 재귀적으로 순회하며 모든 하위 컨트롤을 내놓는다.
+
+    화면 구성(주소)이 조금 달라도 트리/그리드를 놓치지 않기 위해, 특정 주소에
+    의존하지 않고 창(wnd[0]) 아래를 통째로 훑는다.
     """
-    tree = session.findById(GONGSA_TREE)
+    yield node
+    try:
+        children = node.Children
+        count = children.Count
+    except Exception:
+        return
+    for i in range(count):
+        ch = None
+        try:
+            ch = children.ElementAt(i)
+        except Exception:
+            try:
+                ch = children(i)
+            except Exception:
+                ch = None
+        if ch is not None:
+            for sub in _walk(ch):
+                yield sub
+
+
+def _ctype(ctrl):
+    try:
+        return str(ctrl.Type)
+    except Exception:
+        return ""
+
+
+def _scan_tree(tree):
+    """트리(컬럼형)의 모든 노드×열을 훑어 공사번호 형식 값을 찾는다. 없으면 None."""
     try:
         col_names = list(tree.GetColumnNames())
+    except Exception:
+        col_names = []
+    try:
         node_keys = list(tree.GetAllNodeKeys())
     except Exception:
-        return None
+        node_keys = []
     for nk in node_keys:
         for cn in col_names:
             try:
@@ -143,6 +189,131 @@ def _read_gongsa_no(session):
                 continue
             if _GONGSA_PAT.match(val):
                 return val
+    return None
+
+
+def _scan_grid(grid):
+    """그리드(ALV)의 모든 행×열을 훑어 공사번호 형식 값을 찾는다. 없으면 None."""
+    try:
+        col_ids = list(grid.ColumnOrder)
+        rows = grid.RowCount
+    except Exception:
+        return None
+    for r in range(rows):
+        for cid in col_ids:
+            try:
+                val = str(grid.GetCellValue(r, cid)).strip()
+            except Exception:
+                continue
+            if _GONGSA_PAT.match(val):
+                return val
+    return None
+
+
+def _find_gongsa_no_once(session):
+    """현재 화면에서 공사번호 형식 값을 한 번 찾아본다(없으면 None).
+
+    ① 알려진 주소(GONGSA_TREE) 먼저 시도(빠른 경로)
+    ② 안 되면 창 전체의 트리/그리드를 훑는다(주소 하드코딩 의존 제거)
+    """
+    # ① 빠른 경로
+    try:
+        v = _scan_tree(session.findById(GONGSA_TREE))
+        if v:
+            return v
+    except Exception:
+        pass
+    # ② 전체 훑기
+    try:
+        root = session.findById("wnd[0]")
+    except Exception:
+        return None
+    for ctrl in _walk(root):
+        t = _ctype(ctrl)
+        if "Tree" in t:
+            v = _scan_tree(ctrl)
+            if v:
+                return v
+        elif "Grid" in t:
+            v = _scan_grid(ctrl)
+            if v:
+                return v
+    return None
+
+
+def _dump_screen(session):
+    """진단용: 화면의 트리/그리드 내용과 상태바를 로그로 남긴다(원인 확정용)."""
+    _log("── 공사번호 못 찾음 · 화면 진단 덤프 ──", "warn")
+    try:
+        root = session.findById("wnd[0]")
+    except Exception:
+        _log("  wnd[0] 접근 실패", "error")
+        return
+    found = 0
+    for ctrl in _walk(root):
+        t = _ctype(ctrl)
+        if "Tree" not in t and "Grid" not in t:
+            continue
+        found += 1
+        try:
+            cid = str(ctrl.Id)
+        except Exception:
+            cid = "?"
+        _log("  [%s] %s" % (t, cid), "info")
+        if "Tree" in t:
+            try:
+                cols = list(ctrl.GetColumnNames())
+                keys = list(ctrl.GetAllNodeKeys())
+                _log("     열=%s · 행수=%d" % (cols, len(keys)), "info")
+                for nk in keys[:8]:
+                    vals = []
+                    for cn in cols:
+                        try:
+                            vals.append("%s=%s" % (cn, str(ctrl.GetItemText(nk, cn)).strip()))
+                        except Exception:
+                            pass
+                    _log("     · %s" % " | ".join(vals), "info")
+            except Exception as e:
+                _log("     (트리 읽기 실패: %s)" % e, "info")
+        else:
+            try:
+                cols = list(ctrl.ColumnOrder)
+                rows = ctrl.RowCount
+                _log("     열=%s · 행수=%d" % (cols, rows), "info")
+                for r in range(min(rows, 8)):
+                    vals = []
+                    for cid2 in cols:
+                        try:
+                            vals.append("%s=%s" % (cid2, str(ctrl.GetCellValue(r, cid2)).strip()))
+                        except Exception:
+                            pass
+                    _log("     · %s" % " | ".join(vals), "info")
+            except Exception as e:
+                _log("     (그리드 읽기 실패: %s)" % e, "info")
+    if not found:
+        _log("  트리/그리드 컨트롤을 찾지 못했습니다.", "warn")
+    try:
+        _log("  상태바: %s" % str(session.findById("wnd[0]/sbar").text).strip(), "info")
+    except Exception:
+        pass
+
+
+def _read_gongsa_no(session, retries=5, wait=0.3):
+    """생성된 공사번호(숫자4+영문1+숫자4)를 읽어 반환. 실패 시 None.
+
+    - 화면의 모든 트리/그리드를 훑어 형식에 맞는 값을 찾는다(주소 의존 제거).
+    - 저장 직후 트리가 늦게 그려질 수 있어, 잠깐 기다렸다 최대 retries 회 재시도.
+    - 끝내 못 찾으면 화면 내용을 진단 로그로 덤프해 원인을 남긴다.
+      (그래도 안 되면: 다른 T-code에서 구간코드로 조회해 읽는 폴백을 추가 예정)
+    """
+    for attempt in range(retries):
+        v = _find_gongsa_no_once(session)
+        if v:
+            if attempt:
+                _log("공사번호 읽음(재시도 %d회 후): %s" % (attempt, v), "info")
+            return v
+        time.sleep(wait)
+    _dump_screen(session)
     return None
 
 
