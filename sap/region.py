@@ -51,17 +51,42 @@ def _match_key(entry):
     return beopjeong or dong  # 동 지역은 법정동으로
 
 
+def _match_dong(text, entries):
+    """한 시/군의 동목록에서 구간명(text)에 걸리는 줄을 모은다.
+
+    반환: [(키길이, 코드, 동읍면, 매칭키), ...]
+    대표 키(면+리 또는 법정동)로 먼저 찾고, 못 찾으면 동지역 법정명으로 폴백.
+    """
+    hits = []
+    for e in entries:
+        key = _match_key(e)
+        code = str(e.get("코드", "")).strip()
+        if key and code and key in text:
+            hits.append((len(key), code, _norm(e.get("동읍면")), key))
+    if not hits:
+        # 폴백: 동지역(동읍면에 공백 없음) 법정명만. 면지역 법정("동면")은
+        # 리가 빠져 구체적이지 않으므로 제외(엉뚱한 리로 오인 방지).
+        for e in entries:
+            if " " in _norm(e.get("동읍면")):
+                continue
+            beopjeong = _norm(e.get("법정"))
+            code = str(e.get("코드", "")).strip()
+            if beopjeong and code and beopjeong in text:
+                hits.append((len(beopjeong), code, _norm(e.get("동읍면")), beopjeong))
+    return hits
+
+
 def resolve(gu_name, cfg):
     """구간명(gu_name)에서 시/군·동 코드를 찾아 dict 로 반환한다.
 
+    구간명에 시/군(춘천시/홍천군)이 있으면 그 시/군 안에서 동을 찾고,
+    시/군이 없으면(예: "신동면 의암리 11-1번지") 동/리 이름으로 시/군까지 추론한다.
+    추론 시 여러 시/군에 걸쳐 코드가 갈리면(예: "남면"은 춘천·홍천 양쪽) 수동 처리.
+
     반환:
-      {
-        "sigun_name": "춘천시", "sigun_code": "51110",
-        "dong_name":  "동면 만천리", "dong_code": "31022",
-        "matched_key": "동면 만천리"
-      }
+      {"sigun_name","sigun_code","dong_name","dong_code","matched_key"}
     실패:
-      RegionError(사유)  — 시/군 미식별, 코드 미등록, 동 미식별, 지명 중복 등.
+      RegionError(사유) — 시/군·동 미식별, 코드 미등록, 지명 중복, 리 오타 등.
     """
     text = _norm(gu_name)
     if not text:
@@ -72,57 +97,46 @@ def resolve(gu_name, cfg):
     if not gugun:
         raise RegionError("지역 코드표(구군코드)가 비어 있습니다. (엑셀 등록 필요)")
 
-    # 1) 시/군 식별 — 구간명에 들어 있는 구/군 이름(가장 긴 것 우선)
-    sigun_hits = [name for name in gugun.keys() if name and name in text]
-    if not sigun_hits:
-        raise RegionError("구간명에서 시/군을 식별하지 못했습니다: '%s'" % text)
-    sigun_name = max(sigun_hits, key=len)
+    # 1) 시/군 후보 정하기
+    #    - 구간명에 시/군 이름이 있으면 그 시/군으로 한정(가장 긴 것)
+    #    - 없으면 모든 시/군을 후보로 두고 동/리로 추론
+    explicit = [name for name in gugun.keys() if name and name in text]
+    if explicit:
+        candidates = [max(explicit, key=len)]
+    else:
+        candidates = [name for name in gugun.keys() if name]
 
+    # 2) 각 후보 시/군에서 동 매칭 수집(어느 시/군인지 태그와 함께)
+    all_hits = []  # (키길이, 코드, 동읍면, 매칭키, 시군명)
+    for sn in candidates:
+        for (klen, code, dong, key) in _match_dong(text, cfg.dong_entries(sn)):
+            all_hits.append((klen, code, dong, key, sn))
+
+    if not all_hits:
+        if explicit:
+            raise RegionError("구간명에서 동/읍/면을 식별하지 못했습니다: '%s'" % text)
+        raise RegionError("구간명에서 시/군·동을 식별하지 못했습니다: '%s'" % text)
+
+    # 3) 가장 긴(구체적인) 키 우선. 최장 키들이 (시군,코드)까지 같아야 확정.
+    longest = max(h[0] for h in all_hits)
+    top = [h for h in all_hits if h[0] == longest]
+    uniq = {(h[4], h[1]) for h in top}
+    if len(uniq) > 1:
+        detail = ", ".join("%s %s→%s" % (h[4], h[3], h[1]) for h in top)
+        raise RegionError("지명이 여러 시/군·동에 걸쳐 코드를 하나로 정할 수 없습니다: %s"
+                          % detail)
+
+    _, dong_code, dong_name, matched_key, sigun_name = top[0]
+
+    # 4) 시/군 코드 확인
     sigun_code = gugun.get(sigun_name) or None
     if not sigun_code:
         raise RegionError("'%s' 의 구/군 코드가 등록되지 않았습니다. (config 구군코드 확인)"
                           % sigun_name)
 
-    # 2) 동/읍/면 식별 — 해당 시/군 동목록에서 키가 구간명에 포함되는 줄 수집
-    entries = cfg.dong_entries(sigun_name) if cfg else []
-    if not entries:
-        raise RegionError("'%s' 의 동 목록이 비어 있습니다. (엑셀 import 필요)" % sigun_name)
-
-    hits = []  # (키길이, 코드, 동읍면, 매칭키)
-    for e in entries:
-        key = _match_key(e)
-        code = str(e.get("코드", "")).strip()
-        if key and code and key in text:
-            hits.append((len(key), code, _norm(e.get("동읍면")), key))
-
-    # 2-폴백) 대표 키로 못 찾으면 법정명으로 한 번 더 시도.
-    #   단, 동지역(동읍면에 공백 없음)만 — 면지역 법정("동면")은 리가 빠져
-    #   구체적이지 않으므로 폴백 대상에서 제외(엉뚱한 리로 오인 방지).
-    if not hits:
-        for e in entries:
-            if " " in _norm(e.get("동읍면")):
-                continue
-            beopjeong = _norm(e.get("법정"))
-            code = str(e.get("코드", "")).strip()
-            if beopjeong and code and beopjeong in text:
-                hits.append((len(beopjeong), code, _norm(e.get("동읍면")), beopjeong))
-
-    if not hits:
-        raise RegionError("구간명에서 동/읍/면을 식별하지 못했습니다: '%s'" % text)
-
-    # 3) 가장 긴(구체적인) 키 우선. 최장 키들이 같은 코드면 확정, 코드가 갈리면 중복.
-    longest = max(h[0] for h in hits)
-    top = [h for h in hits if h[0] == longest]
-    codes = {h[1] for h in top}
-    if len(codes) > 1:
-        detail = ", ".join("%s→%s" % (h[3], h[1]) for h in top)
-        raise RegionError("동 지명이 중복되어 코드를 하나로 정할 수 없습니다: %s" % detail)
-
-    _, dong_code, dong_name, matched_key = top[0]
-
-    # 오타 방지(중요): 면/읍만 매칭됐는데 주소엔 리가 붙어 있으면 →
-    # 그 리를 코드표에서 못 찾은 것이므로(오타 가능성) 면 코드로 넘기지 말고 수동 처리.
-    #   예) "동면 만철리"(오타) 가 바로 옆 "동면"(면 자체) 코드로 새는 것을 막는다.
+    # 5) 오타 방지(중요): 면/읍만 매칭됐는데 주소엔 리가 붙어 있으면 →
+    #    그 리를 코드표에서 못 찾은 것이므로(오타 가능) 면 코드로 넘기지 말고 수동.
+    #    예) "동면 만철리"(오타) 가 옆의 "동면"(면 자체) 코드로 새는 것을 막는다.
     if matched_key.endswith(("면", "읍")):
         after = text.split(matched_key, 1)[-1]
         if re.search(r"[가-힣]+리", after):
