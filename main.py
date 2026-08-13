@@ -403,6 +403,10 @@ class Api:
 
 def main() -> None:
     """pywebview 창을 생성하고 GUI 를 실행한다."""
+    # VDI 등 GPU 미지원 환경에서 WebView2(Edge) 시동이 느린 경우가 많다.
+    # GPU 가속을 끄면 초기화가 빨라질 수 있어 시도한다(환경에 따라 효과 상이).
+    os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                          "--disable-gpu --disable-gpu-compositing")
     applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
     _lap("모듈 로드 완료")
     api = Api()
