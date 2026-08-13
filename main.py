@@ -27,14 +27,13 @@ import webview
 
 import applog
 from config_manager import ConfigManager
-from sap import connector
-from sap import zrec0002
-from sap import region
-from sap import pipeline
 
+# 무거운 SAP 모듈(sap.pipeline → T-code 6개 등)은 시작 지연을 줄이기 위해
+# 최상단에서 import 하지 않고, 실제 사용하는 메서드 안에서 지연 import 한다.
 
-# 파이프라인 단계 코드 → 우측 패널 단계 카드 인덱스(0~5)
-_STEP_INDEX = {code: i for i, (code, _name) in enumerate(pipeline.STEPS)}
+# 파이프라인 단계 코드 → 우측 패널 단계 카드 인덱스(0~5). (pipeline.STEPS 와 동일 순서)
+_STEP_CODES = ["ZREC0002", "ZREC0100", "ZMEC0210", "ZREC2030", "ZREC2040", "ZREC0208"]
+_STEP_INDEX = {code: i for i, code in enumerate(_STEP_CODES)}
 
 
 def _digits(s):
@@ -145,6 +144,7 @@ class Api:
         성공: {"ok": True, "columns": [...], "rows": [...], "row_count": n}
         실패: {"ok": False, "error": 사유}
         """
+        from sap import connector, zrec0002, region
         try:
             session = connector.get_session()
         except connector.SapConnectionError as e:
@@ -165,6 +165,7 @@ class Api:
         반환: (work, None) 성공 / (None, 사유) 실패(수동 처리 대상).
         이름·주소를 코드로 바꾸고, 승인투자비로 재질/연장/PLP를 도출한다.
         """
+        from sap import region
         cmp = str(row.get("cmp") or "").strip()
         name = str(row.get("name") or "").strip()
         if not cmp:
@@ -250,6 +251,7 @@ class Api:
         if not rows:
             return {"ok": False, "error": "선택된 건이 없습니다."}
 
+        from sap import connector, pipeline
         applog.section("자동 발주 시작 · 선택 %d건 (TSRM %s)"
                        % (len(rows), "생략" if skip_tsrm else "발송"))
 
@@ -359,6 +361,7 @@ class Api:
         성공: {"ok": True, system/client/user/transaction/language}
         실패: {"ok": False, "error": 사유}
         """
+        from sap import connector
         return connector.check_connection()
 
     # ── 상태 ───────────────────────────────────────────────
