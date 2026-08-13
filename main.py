@@ -129,7 +129,9 @@ class Api:
         except connector.SapConnectionError as e:
             return {"ok": False, "error": str(e)}
         try:
-            data = zrec0002.fetch_request_list(session)
+            # 대상 권역(춘천/홍천) 외 건은 목록에서 아예 제외한다.
+            rfilter = (lambda nm: region.in_region(nm, self.cfg)) if self.cfg else None
+            data = zrec0002.fetch_request_list(session, region_filter=rfilter)
             data["ok"] = True
             return data
         except Exception as e:

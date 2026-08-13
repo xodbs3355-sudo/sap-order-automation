@@ -33,6 +33,10 @@ class RegionError(Exception):
     """구간명에서 시/군·동 코드를 확정하지 못했을 때 발생(수동 처리 대상)."""
 
 
+# 구간명 앞머리의 "○○시 / ○○군" 토큰(예: "태백시 ...", "춘천시 ...")
+_SIGUN_HEAD = re.compile(r"^\s*([가-힣]{2,4}[시군])\s")
+
+
 def _norm(s):
     """비교용 정규화: 앞뒤 공백 제거 + 내부 공백 단일화."""
     return re.sub(r"\s+", " ", str(s or "").strip())
@@ -74,6 +78,28 @@ def _match_dong(text, entries):
             if beopjeong and code and beopjeong in text:
                 hits.append((len(beopjeong), code, _norm(e.get("동읍면")), beopjeong))
     return hits
+
+
+def in_region(name, cfg):
+    """구간명이 '대상 권역'(등록된 시/군)인지 판정한다 — 리스트 불러오기 필터용.
+
+    이 프로그램은 춘천/홍천만 대상이므로, 목록을 불러올 때 그 밖의 시/군은
+    아예 걸러낸다. 다만 의뢰자가 시/군을 빼먹은 춘천/홍천 건은 남겨야 하므로
+    "앞머리에 다른 ○○시/○○군이 '명시된' 경우만" 제외한다.
+
+      · 등록 시/군(춘천시/홍천군)이 이름에 있으면            → 대상(True)
+      · 앞머리에 다른 시/군이 명시돼 있으면(예: 태백시)       → 제외(False)
+      · 시/군 표기가 없으면(생략)                          → 일단 대상(True)
+        (실제 시/군·동 확정은 실행 시 resolve 가 동/리로 판단)
+    """
+    text = _norm(name)
+    allowed = cfg.sigun_names() if cfg else []
+    if any(sn and sn in text for sn in allowed):
+        return True
+    m = _SIGUN_HEAD.match(text)
+    if m and m.group(1) not in allowed:
+        return False
+    return True
 
 
 def resolve(gu_name, cfg):

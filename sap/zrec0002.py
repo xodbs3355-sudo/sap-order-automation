@@ -66,14 +66,17 @@ def _dismiss_info_popup(session):
     return True
 
 
-def fetch_request_list(session):
+def fetch_request_list(session, region_filter=None):
     """의뢰 공사 목록을 조회해 그리드 내용을 통째로 읽어 반환한다.
+
+    region_filter: callable(구간명)->bool. 주면 '대상 권역'(춘천/홍천) 건만 남기고
+        그 밖(태백시 등)은 목록에서 아예 제외한다. 없으면 권역 필터를 건너뛴다.
 
     반환(dict):
       {
-        "columns": [ {"id": 열ID, "title": 열제목}, ... ],
-        "rows":    [ { 열ID: 값, ... }, ... ],
-        "row_count": 행수
+        "columns": [...], "rows": [...], "row_count": 표시행수,
+        "total_fetched": 전체데이터행, "excluded": 10m초과 제외수,
+        "excluded_region": 권역 외 제외수,
       }
     - 열 제목(title)을 함께 담아, 첫 실행 때 실제 컬럼명을 확인해 매핑을 확정한다.
     - 주의: 행이 매우 많은 그리드는 화면에 로드된 행만 읽힐 수 있다.
@@ -85,7 +88,7 @@ def fetch_request_list(session):
     # → 팝업을 닫고 빈 목록(0건)으로 정상 반환한다.
     if _dismiss_info_popup(session):
         return {"columns": [], "rows": [], "row_count": 0,
-                "total_fetched": 0, "excluded": 0,
+                "total_fetched": 0, "excluded": 0, "excluded_region": 0,
                 "message": "조회 조건에 맞는 의뢰 대상이 없습니다."}
 
     grid = session.findById(GRID_ID)
@@ -120,21 +123,30 @@ def fetch_request_list(session):
         data_rows = rows
     total = len(data_rows)
 
-    # 대상(63A·10m 이하)만 남긴다. 연장>10 또는 빈값/숫자아님 → 제외.
+    # 1) 권역 필터 — 대상 권역(춘천/홍천) 외 시/군(태백 등)은 목록에서 아예 제외.
+    name_col = _find_col(columns, "구간명")
+    if region_filter is not None and name_col is not None:
+        region_rows = [r for r in data_rows if region_filter(r.get(name_col))]
+    else:
+        region_rows = data_rows
+    excluded_region = len(data_rows) - len(region_rows)
+
+    # 2) 대상(63A·10m 이하)만 남긴다. 연장>10 또는 빈값/숫자아님 → 제외.
     len_col = _find_col(columns, "연장")
     if len_col is not None:
         shown = []
-        for r in data_rows:
+        for r in region_rows:
             length = _to_length(r.get(len_col))
             if length is not None and length <= _MAX_LENGTH_M:
                 shown.append(r)
     else:
-        shown = data_rows   # 연장 열을 못 찾으면 필터 불가 → 전부 표시(안전)
+        shown = region_rows   # 연장 열을 못 찾으면 필터 불가 → 전부 표시(안전)
 
     return {"columns": columns, "rows": shown,
             "row_count": len(shown),
             "total_fetched": total,
-            "excluded": total - len(shown)}
+            "excluded": len(region_rows) - len(shown),   # 10m 초과 제외 수
+            "excluded_region": excluded_region}          # 권역 외 제외 수
 
 
 def receive_request(session, row_index):

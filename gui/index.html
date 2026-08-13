@@ -1344,9 +1344,11 @@ function loadRequestList() {
     /* 하단: 전체(조회) 대비 리스트업(10m 이하) 건수 표시 */
     var total = (res.total_fetched != null) ? res.total_fetched : norm.length;
     var excl  = (res.excluded != null) ? res.excluded : 0;
+    var exclR = (res.excluded_region != null) ? res.excluded_region : 0;
     var fs = document.getElementById("filterStat");
     if (fs) {
       fs.textContent = "전체 " + total + "건 중 " + norm.length + "건 리스트업" +
+                       (exclR > 0 ? " · 권역 외 " + exclR + "건 제외" : "") +
                        (excl > 0 ? " · 10m 초과 " + excl + "건 제외" : "");
     }
 
