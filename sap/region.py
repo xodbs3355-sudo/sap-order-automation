@@ -119,6 +119,17 @@ def resolve(gu_name, cfg):
         raise RegionError("동 지명이 중복되어 코드를 하나로 정할 수 없습니다: %s" % detail)
 
     _, dong_code, dong_name, matched_key = top[0]
+
+    # 오타 방지(중요): 면/읍만 매칭됐는데 주소엔 리가 붙어 있으면 →
+    # 그 리를 코드표에서 못 찾은 것이므로(오타 가능성) 면 코드로 넘기지 말고 수동 처리.
+    #   예) "동면 만철리"(오타) 가 바로 옆 "동면"(면 자체) 코드로 새는 것을 막는다.
+    if matched_key.endswith(("면", "읍")):
+        after = text.split(matched_key, 1)[-1]
+        if re.search(r"[가-힣]+리", after):
+            raise RegionError(
+                "'%s' 뒤의 리를 코드표에서 찾지 못했습니다(오타 가능): '%s'"
+                % (matched_key, text))
+
     return {
         "sigun_name": sigun_name,
         "sigun_code": sigun_code,

@@ -6,14 +6,20 @@
     사람이 손으로 옮기면 오타가 난다. 사용자가 그 목록을 엑셀/CSV 로 내보내
     이 스크립트에 넣으면, 오타 없이 그대로 config 에 채워 넣는다.
 
-기대하는 표 형태(열 제목에 아래 단어가 들어가면 자동 인식):
-    시/도 | 구/군 | 동/읍/면 | 읍면동 | 동/읍/면/리 순번
-    (예)   춘천시   동면 만천리  동면      31022
+기대하는 표 형태 — 두 가지 레이아웃을 자동 인식한다.
 
-    · '구/군'      → 어느 시/군의 목록인지 구분 (춘천시/홍천군)
-    · '동/읍/면'   → 구간명과 대조할 이름(면지역은 "면 리")     → config "동읍면"
-    · '읍면동'     → 법정동/면                                  → config "법정"
-    · '순번'       → 실제 넣을 동 코드                          → config "코드"
+  (A) 법정동만/리 분리 (권장·최신 엑셀):
+      시/도 | 구/군 | 읍면동 | 리 | 동/읍/면/리 순번
+      (예)   춘천시   남면    가정리   34023
+      (예)   춘천시   교동     (빈칸)   12200
+      → config "동읍면" = 읍면동+리 합침("남면 가정리") 또는 읍면동만("교동")
+        config "법정"   = 읍면동("남면"/"교동"),  config "코드" = 순번
+
+  (B) 행정동/법정동 혼재 (F4 화면 캡쳐형):
+      시/도 | 구/군 | 동/읍/면 | 읍면동 | 동/읍/면/리 순번
+      → config "동읍면" = 동/읍/면,  "법정" = 읍면동,  "코드" = 순번
+
+공통: '구/군' 으로 시/군을 구분하고, '순번' 을 동 코드로 넣는다.
 
 사용법:
     python tools/import_region_excel.py  지역코드.xlsx
@@ -60,8 +66,17 @@ def _read_rows(path):
                 "또는 엑셀에서 CSV 로 저장해 다시 시도하세요.")
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         ws = wb.active
-        data = [[("" if c is None else c) for c in row]
-                for row in ws.iter_rows(values_only=True)]
+        data = []
+        streak = 0
+        for row in ws.iter_rows(values_only=True):
+            cells = ["" if c is None else c for c in row]
+            if not any(str(c).strip() for c in cells):
+                streak += 1
+                if streak > 50:   # 엑셀 max_row(빈 행 수십만) 폭주 방지 → 데이터 끝으로 간주
+                    break
+                continue
+            streak = 0
+            data.append(cells)
     else:
         # CSV (utf-8-sig: 엑셀 저장 BOM 대응)
         with open(path, encoding="utf-8-sig", newline="") as f:
@@ -81,26 +96,58 @@ def main(argv):
         raise SystemExit("파일을 찾을 수 없습니다: %s" % path)
 
     headers, rows = _read_rows(path)
-    i_gugun = _pick_col(headers, "구/군")
-    i_dong = _pick_col(headers, "동/읍/면")       # "동/읍/면" (리 포함)
-    i_beop = _pick_col(headers, "읍면동")          # 법정동/면
-    i_code = _pick_col(headers, "순번")            # 동/읍/면/리 순번 = 코드
-    if None in (i_gugun, i_dong, i_beop, i_code):
-        raise SystemExit(
-            "열 제목을 인식하지 못했습니다. '구/군, 동/읍/면, 읍면동, 순번'"
-            " 이 포함된 헤더가 필요합니다.\n  읽은 헤더: %s" % headers)
+    hn = [str(h).replace(" ", "") for h in headers]
+
+    def col_exact(name):
+        return hn.index(name) if name in hn else None
+
+    def col_has(kw):
+        for i, x in enumerate(hn):
+            if kw in x:
+                return i
+        return None
+
+    i_gugun = col_has("구/군")
+    i_code = col_has("순번")
+    i_eup = col_exact("읍면동")
+    i_ri = col_exact("리")
+    i_dong = col_exact("동/읍/면")   # (B) 혼재 레이아웃 전용
+
+    if i_gugun is None or i_code is None:
+        raise SystemExit("'구/군' 또는 '순번' 열을 못 찾았습니다.\n  읽은 헤더: %s" % headers)
+
+    if i_ri is not None and i_eup is not None:
+        layout = "A"      # 읍면동 + 리 (법정동만)
+    elif i_dong is not None:
+        layout = "B"      # 동/읍/면 + 읍면동 (혼재)
+    elif i_eup is not None:
+        layout = "eup"    # 읍면동만
+    else:
+        raise SystemExit("동/읍/면 관련 열(읍면동/리 또는 동/읍/면)을 못 찾았습니다.\n  헤더: %s"
+                         % headers)
+    print("  레이아웃 인식: %s" % {"A": "읍면동+리(법정동)", "B": "동/읍/면+읍면동(혼재)",
+                                   "eup": "읍면동만"}[layout])
+
+    def cell(r, i):
+        return str(r[i]).strip() if (i is not None and i < len(r)) else ""
 
     # 구/군별로 묶기
     by_gugun = {}
     for r in rows:
-        def cell(i):
-            return str(r[i]).strip() if i < len(r) else ""
-        gugun = cell(i_gugun)
-        dong = cell(i_dong)
-        beop = cell(i_beop)
-        code = cell(i_code)
+        gugun = cell(r, i_gugun)
+        code = cell(r, i_code)
         if not gugun or not code:
             continue
+        if layout == "A":
+            eup = cell(r, i_eup)
+            ri = cell(r, i_ri)
+            dong = (eup + " " + ri).strip() if ri else eup
+            beop = eup
+        elif layout == "B":
+            dong = cell(r, i_dong)
+            beop = cell(r, i_eup) or dong
+        else:  # eup
+            dong = beop = cell(r, i_eup)
         by_gugun.setdefault(gugun, []).append(
             {"동읍면": dong, "법정": beop, "코드": code})
 
