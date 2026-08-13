@@ -409,6 +409,37 @@ def _handle_save_popups(session, max_popups=5):
                 return
 
 
+def _requery(session, cmp_no):
+    """저장 직후 '공사번호 생성' 화면엔 새 번호가 표시되지 않으므로,
+    구간코드로 다시 조회(F8)해 우측 공사번호 트리에 번호가 뜨게 한다.
+
+    현재 화면에서 조회 필드에 바로 넣어 F8. 안 되면 T-code 재진입 후 조회.
+    조회 후 좌측 CMP 노드를 선택해 우측 공사번호/매핑이 표시되도록 한다
+    (1:1 버튼은 누르지 않음 — 재생성 방지).
+    """
+    def _do():
+        session.findById(SEL_CMP_FIELD).text = cmp_no
+        session.findById("wnd[0]").sendVKey(8)   # F8 조회
+        try:
+            tree = session.findById(CMP_TREE)
+            keys = list(tree.GetAllNodeKeys())
+            if keys:
+                tree.selectNode(keys[0])
+        except Exception:
+            pass
+
+    try:
+        _do()
+        return
+    except Exception:
+        pass
+    try:
+        connector.go_tcode(session, "ZREC0100")
+        _do()
+    except Exception:
+        pass
+
+
 def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_permit):
     """ZREC0100 으로 공사번호를 생성하고 그 번호를 반환한다.
 
@@ -450,5 +481,8 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
     session.findById(BTN_SAVE).press()
     _handle_save_popups(session)
 
-    # 6) 화면에서 공사번호 읽기(GuiShell 트리/그리드 포함 탐색)
+    # 6) 재조회 → 공사번호 읽기
+    #    저장 직후 '공사번호 생성' 화면엔 새 번호가 표시되지 않는다(진단 확인).
+    #    구간코드로 다시 조회(F8)해 우측 공사번호 트리에 번호를 띄운 뒤 읽는다.
+    _requery(session, cmp_no)
     return _read_gongsa_no(session)

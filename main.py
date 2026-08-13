@@ -28,6 +28,11 @@ import webview
 import applog
 from config_manager import ConfigManager
 
+# pywebview(WebView2)가 접근성 관련 오류를 터미널에 대량으로 찍는 경우가 있어
+# (동작엔 지장 없음) 로그 소음·부하를 줄이려 pywebview 로거를 잠재운다.
+import logging as _logging
+_logging.getLogger("pywebview").setLevel(_logging.CRITICAL)
+
 # 무거운 SAP 모듈(sap.pipeline → T-code 6개 등)은 시작 지연을 줄이기 위해
 # 최상단에서 import 하지 않고, 실제 사용하는 메서드 안에서 지연 import 한다.
 
@@ -275,10 +280,15 @@ class Api:
         except connector.SapConnectionError as e:
             applog.error("SAP 연결 실패: %s" % e)
             return {"ok": False, "error": str(e)}
-        conn = connector.check_connection()
-        if conn.get("ok"):
+        # 연결 정보는 이미 얻은 session 에서 직접 읽는다.
+        # (connector.check_connection() 은 내부에서 get_session 을 다시 호출해
+        #  'SAP GUI 액세스' 팝업이 한 번 더 뜨므로 여기서는 쓰지 않는다.)
+        try:
+            info = session.Info
             applog.info("SAP 연결됨 · 시스템 %s / 클라이언트 %s / 사용자 %s"
-                        % (conn.get("system"), conn.get("client"), conn.get("user")))
+                        % (info.SystemName, info.Client, info.User))
+        except Exception:
+            pass
 
         # 우측 '실행 대상' 패널 초기화
         names = [_short_name(r.get("name") or r.get("cmp") or "") for r in rows]
