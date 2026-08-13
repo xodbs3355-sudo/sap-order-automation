@@ -8,12 +8,42 @@ pywebview로 gui/index.html 을 로컬 데스크탑 창으로 띄운다.
 """
 
 import os
+import json
 
 import webview
 
+import applog
 from config_manager import ConfigManager
 from sap import connector
 from sap import zrec0002
+from sap import region
+from sap import pipeline
+
+
+# 파이프라인 단계 코드 → 우측 패널 단계 카드 인덱스(0~5)
+_STEP_INDEX = {code: i for i, (code, _name) in enumerate(pipeline.STEPS)}
+
+
+def _digits(s):
+    """문자열에서 숫자만 뽑아 int. 없으면 None. ('3,651,000원'→3651000)"""
+    d = "".join(ch for ch in str(s) if ch.isdigit())
+    return int(d) if d else None
+
+
+def _year_of(date_str):
+    """'2026-08-01' / '2026.08.01' 등에서 연도(4자리)를 뽑는다. 없으면 None."""
+    d = "".join(ch for ch in str(date_str) if ch.isdigit())
+    return d[:4] if len(d) >= 4 else None
+
+
+def _short_name(name):
+    """패널 표시용으로 구간명을 짧게(뒤 '인입공급관' 등 제거)."""
+    s = str(name or "").strip()
+    for tail in (" 인입공급관", " 인입 공급관", "인입공급관"):
+        if s.endswith(tail):
+            s = s[: -len(tail)].strip()
+            break
+    return s or name
 
 
 def get_gui_path() -> str:
@@ -37,6 +67,23 @@ class Api:
         except Exception as e:
             self.cfg = None
             self.config_error = str(e)
+        # pywebview 창(화면에 로그/진행상태를 밀어넣기 위한 통로). main() 에서 연결.
+        self.window = None
+
+    # ── 화면 호출(파이썬 → JS) ─────────────────────────────
+    def _js(self, fn, *args):
+        """화면의 JS 함수를 호출한다(진행상태·로그 실시간 갱신용).
+
+        예: self._js("runStep", 2, "done") → 화면에서 runStep(2,"done") 실행.
+        창이 아직 없거나 실패해도 조용히 무시(로직은 계속).
+        """
+        if not self.window:
+            return
+        try:
+            payload = ", ".join(json.dumps(a, ensure_ascii=False) for a in args)
+            self.window.evaluate_js("%s(%s)" % (fn, payload))
+        except Exception:
+            pass
 
     # ── 단가표 ─────────────────────────────────────────────
     def get_price_table(self):
@@ -88,6 +135,185 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": "목록 조회 실패: %s" % e}
 
+    # ── 선택 건 자동 발주 ──────────────────────────────────
+    def _build_work(self, row, skip_tsrm):
+        """화면 한 행(row dict) → 파이프라인 입력(work dict)으로 변환.
+
+        반환: (work, None) 성공 / (None, 사유) 실패(수동 처리 대상).
+        이름·주소를 코드로 바꾸고, 승인투자비로 재질/연장/PLP를 도출한다.
+        """
+        cmp = str(row.get("cmp") or "").strip()
+        name = str(row.get("name") or "").strip()
+        if not cmp:
+            return None, "구간코드(CMP)가 없습니다."
+
+        # 굴착허가 대상/비대상 → 1/2
+        dig_raw = str(row.get("dig") or "").strip()
+        if dig_raw == "대상":
+            dig = "1"
+        elif dig_raw == "비대상":
+            dig = "2"
+        else:
+            return None, "굴착허가가 선택되지 않았습니다."
+
+        # 허가청 이름 → 코드
+        permit_name = str(row.get("permit") or "").strip()
+        permit = self.cfg.permit_code(permit_name)
+        if not permit:
+            return None, "허가청 미선택/미등록: '%s'" % permit_name
+
+        # 시공업체 이름 → 코드
+        vendor_name = str(row.get("vendor") or "").strip()
+        vendor = self.cfg.vendor_code(vendor_name)
+        if not vendor:
+            return None, "시공업체 미선택/미등록: '%s'" % vendor_name
+
+        # 공사기간
+        start = str(row.get("start") or "").strip()
+        end = str(row.get("end") or "").strip()
+        if not start or not end:
+            return None, "공사기간(시작/종료)이 입력되지 않았습니다."
+
+        # 구간명 → 시/군·동 코드
+        try:
+            reg = region.resolve(name, self.cfg)
+        except region.RegionError as e:
+            return None, "지역 코드 확정 실패 — %s" % e
+
+        # 승인투자비 → 재질/연장/PLP (연도 자동 판별)
+        cost = _digits(row.get("cost"))
+        if cost is None:
+            return None, "승인투자비를 읽지 못했습니다."
+        prefer_year = _year_of(row.get("date")) or _year_of(start)
+        lp = self.cfg.lookup_price_smart(cost, prefer_year=prefer_year)
+        if not lp:
+            return None, ("단가표 불일치(승인투자비 %s원) — 수동 처리 필요"
+                          % format(cost, ","))
+
+        work = {
+            "cmp": cmp,
+            "sigun": reg["sigun_code"],
+            "dong": reg["dong_code"],
+            "permit": permit,
+            "dig": dig,
+            "road": lp["material"],
+            "length": lp["length"],
+            "plp": lp["with_plp"],
+            "vendor": vendor,
+            "gu_name": name,
+            "start": start,
+            "end": end,
+            "echk": False,
+            "skip_tsrm": bool(skip_tsrm) or self.cfg.test_server_mode,
+            # 로그·표시용 부가정보
+            "_permit_name": permit_name,
+            "_vendor_name": vendor_name,
+            "_region": reg,
+            "_price": lp,
+            "_cost": cost,
+        }
+        return work, None
+
+    def run_selected(self, rows, skip_tsrm=True):
+        """화면에서 선택한 행들을 순서대로 자동 발주한다(6단계 × N건).
+
+        rows: [{cmp,name,length,cost,date,dig,permit,vendor,start,end}, ...]
+        진행 상태·로그는 self._js(...) 로 화면에 실시간 반영한다.
+        반환: {"ok":bool, "results":[...], "success":n, "total":n, "error":..}
+        """
+        if self.cfg is None:
+            return {"ok": False, "error": self.config_error or "설정 로드 실패"}
+        rows = rows or []
+        if not rows:
+            return {"ok": False, "error": "선택된 건이 없습니다."}
+
+        applog.section("자동 발주 시작 · 선택 %d건 (TSRM %s)"
+                       % (len(rows), "생략" if skip_tsrm else "발송"))
+
+        # SAP 연결
+        try:
+            session = connector.get_session()
+        except connector.SapConnectionError as e:
+            applog.error("SAP 연결 실패: %s" % e)
+            return {"ok": False, "error": str(e)}
+        conn = connector.check_connection()
+        if conn.get("ok"):
+            applog.info("SAP 연결됨 · 시스템 %s / 클라이언트 %s / 사용자 %s"
+                        % (conn.get("system"), conn.get("client"), conn.get("user")))
+
+        # 우측 '실행 대상' 패널 초기화
+        names = [_short_name(r.get("name") or r.get("cmp") or "") for r in rows]
+        self._js("runInit", names)
+
+        results = []
+        for i, row in enumerate(rows):
+            cmp = str(row.get("cmp") or "").strip()
+            sname = _short_name(row.get("name") or cmp)
+            self._js("runWork", i, "cur", sname)
+
+            work, err = self._build_work(row, skip_tsrm)
+            if err:
+                applog.warn("[%d/%d] %s — 준비 실패: %s"
+                            % (i + 1, len(rows), cmp, err))
+                self._js("runWork", i, "fail", sname)
+                results.append({"ok": False, "cmp": cmp, "step": "준비", "error": err})
+                continue
+
+            reg = work["_region"]
+            lp = work["_price"]
+            applog.info(
+                "[%d/%d] %s 준비완료 → 시군 %s(%s)/동 %s(%s) · 재질 %s·연장 %sm·PLP %s "
+                "(투자비 %s원, %s년) · 허가청 %s(%s)/굴착 %s · 업체 %s(%s) · 기간 %s~%s"
+                % (i + 1, len(rows), cmp,
+                   reg["sigun_name"], reg["sigun_code"], reg["dong_name"], reg["dong_code"],
+                   work["road"], work["length"], "포함" if work["plp"] else "없음",
+                   format(work["_cost"], ","), lp.get("year"),
+                   work["_permit_name"], work["permit"], work["dig"],
+                   work["_vendor_name"], work["vendor"], work["start"], work["end"]))
+
+            def on_prog(step, status, info="", _i=i, _cmp=cmp):
+                idx = _STEP_INDEX.get(step)
+                if idx is not None:
+                    self._js("runStep", idx, status)
+                if status == "start":
+                    applog.info("   [%d] %s 시작…" % (_i + 1, step))
+                elif status == "done":
+                    applog.success("   [%d] %s 완료%s"
+                                   % (_i + 1, step, (" · " + info) if info else ""))
+                elif status == "fail":
+                    applog.error("   [%d] %s 실패 · %s" % (_i + 1, step, info))
+
+            try:
+                res = pipeline.run_one(session, work, on_progress=on_prog)
+                self._js("runWork", i, "done", sname)
+                applog.success(
+                    "[%d/%d] %s 발주 완료 · 공사번호 %s · 산안비 %s"
+                    % (i + 1, len(rows), cmp, res.get("gongsa_no"), res.get("safety")))
+                results.append({"ok": True, "cmp": cmp,
+                                "gongsa_no": res.get("gongsa_no"),
+                                "safety": res.get("safety")})
+            except pipeline.PipelineError as e:
+                idx = _STEP_INDEX.get(e.step)
+                if idx is not None:
+                    self._js("runStep", idx, "fail")
+                self._js("runWork", i, "fail", sname)
+                applog.exc("[%d/%d] %s — %s 단계 실패: %s"
+                           % (i + 1, len(rows), cmp, e.step, e.cause))
+                results.append({"ok": False, "cmp": cmp,
+                                "step": e.step, "error": str(e.cause)})
+            except Exception as e:
+                self._js("runWork", i, "fail", sname)
+                applog.exc("[%d/%d] %s — 예상치 못한 오류: %s"
+                           % (i + 1, len(rows), cmp, e))
+                results.append({"ok": False, "cmp": cmp,
+                                "step": "오류", "error": str(e)})
+
+        ok_n = sum(1 for r in results if r.get("ok"))
+        applog.section("자동 발주 종료 · 성공 %d / 실패 %d" % (ok_n, len(results) - ok_n))
+        self._js("runFinish", ok_n, len(results))
+        return {"ok": True, "results": results,
+                "success": ok_n, "total": len(results)}
+
     # ── SAP 연결 ───────────────────────────────────────────
     def check_sap_connection(self):
         """SAP 연결 상태를 점검해 반환(화면의 '연결 확인'에서 호출).
@@ -113,7 +339,7 @@ class Api:
 def main() -> None:
     """pywebview 창을 생성하고 GUI 를 실행한다."""
     api = Api()
-    webview.create_window(
+    window = webview.create_window(
         title="SAP Work Order Automation",
         url=get_gui_path(),
         js_api=api,
@@ -124,6 +350,10 @@ def main() -> None:
         min_size=(1530, 700),
         resizable=True,
     )
+    # 화면 연결: 파이썬 로그를 처리 로그 창에도 실시간으로 찍는다.
+    api.window = window
+    applog.set_gui_emit(lambda m, l: api._js("addLog", m, l))
+    applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
     webview.start()
 
 

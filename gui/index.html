@@ -311,6 +311,14 @@ td input[readonly] {
 .step-card.active .step-status { color: #f5a623; }
 .step-card.wait .step-status   { color: #b0a898; }
 
+/* 단계 실패(빨강) */
+.step-card.fail { background: #fdecea; border-color: #f5b7b1; }
+.step-card.fail .step-num    { background: #c0392b; color: #fff; }
+.step-card.fail .step-code   { color: #c0392b; }
+.step-card.fail .step-desc,
+.step-card.fail .step-status { color: #c0392b; }
+.run-ico .fail-mark { font-size: 12px; line-height: 1; }
+
 /* 우측 하단 */
 .right-footer {
   padding: 10px 12px;
@@ -606,7 +614,7 @@ tbody tr:nth-child(even):hover td.input-td {
     </div>
     <div class="topbar-btns">
       <button class="btn-out" onclick="openPriceModal()">⚙ 단가표 관리</button>
-      <button class="btn-main">▶ 선택 건 실행</button>
+      <button id="runBtn" class="btn-main" onclick="runSelected()">▶ 선택 건 실행</button>
     </div>
   </div>
 
@@ -682,6 +690,7 @@ tbody tr:nth-child(even):hover td.input-td {
     <div class="right">
       <div class="right-header">
         <div class="right-header-title">📋 실행 단계</div>
+        <div class="right-cmp" id="runCurName">대기 중</div>
       </div>
       <div class="right-body">
 
@@ -689,70 +698,70 @@ tbody tr:nth-child(even):hover td.input-td {
         <div class="run-box">
           <div class="run-box-head">
             <span class="run-box-title">실행 대상</span>
-            <span class="run-box-count" id="runCount">1 / 3 완료</span>
+            <span class="run-box-count" id="runCount">0 / 0 완료</span>
           </div>
-          <div class="run-list" id="runList">
-            <div class="run-row"><span class="run-name done">춘천시 후평동 74-19번지</span><span class="run-ico"><span class="check">✓</span></span></div>
-            <div class="run-row"><span class="run-name cur">춘천시 철전동 564-7번지</span><span class="run-ico"><span class="spin"></span></span></div>
-            <div class="run-row"><span class="run-name wait">춘천시 온의동 515-2번지</span><span class="run-ico"><span class="wait-dot"></span></span></div>
-          </div>
+          <!-- 실행 대상 목록: '선택 건 실행' 시 파이썬이 runInit()으로 채운다 -->
+          <div class="run-list" id="runList"></div>
         </div>
 
         <div class="run-sec-label">현재 공사 진행단계</div>
 
-        <div class="step-card done">
-          <div class="step-num">✓</div>
-          <div class="step-info">
-            <div class="step-code">ZREC0002</div>
-            <div class="step-desc">공사의뢰 접수</div>
+        <!-- 6단계 카드: 시작 시 모두 대기. 파이썬이 runStep()으로 갱신 -->
+        <div id="stepCards">
+          <div class="step-card wait">
+            <div class="step-num">1</div>
+            <div class="step-info">
+              <div class="step-code">ZREC0002</div>
+              <div class="step-desc">공사의뢰 접수</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">완료</div>
-        </div>
-        <div class="step-card active">
-          <div class="step-num">2</div>
-          <div class="step-info">
-            <div class="step-code">ZREC0100</div>
-            <div class="step-desc">공사번호 생성 중…</div>
+          <div class="step-card wait">
+            <div class="step-num">2</div>
+            <div class="step-info">
+              <div class="step-code">ZREC0100</div>
+              <div class="step-desc">공사번호 생성</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">진행중</div>
-        </div>
-        <div class="step-card wait">
-          <div class="step-num">3</div>
-          <div class="step-info">
-            <div class="step-code">ZMEC0210</div>
-            <div class="step-desc">설계예산서 작성</div>
+          <div class="step-card wait">
+            <div class="step-num">3</div>
+            <div class="step-info">
+              <div class="step-code">ZMEC0210</div>
+              <div class="step-desc">설계예산서 작성</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">대기</div>
-        </div>
-        <div class="step-card wait">
-          <div class="step-num">4</div>
-          <div class="step-info">
-            <div class="step-code">ZREC2030</div>
-            <div class="step-desc">발주구간 생성</div>
+          <div class="step-card wait">
+            <div class="step-num">4</div>
+            <div class="step-info">
+              <div class="step-code">ZREC2030</div>
+              <div class="step-desc">발주구간 생성</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">대기</div>
-        </div>
-        <div class="step-card wait">
-          <div class="step-num">5</div>
-          <div class="step-info">
-            <div class="step-code">ZREC2040</div>
-            <div class="step-desc">시행품의 생성</div>
+          <div class="step-card wait">
+            <div class="step-num">5</div>
+            <div class="step-info">
+              <div class="step-code">ZREC2040</div>
+              <div class="step-desc">시행품의 생성</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">대기</div>
-        </div>
-        <div class="step-card wait">
-          <div class="step-num">6</div>
-          <div class="step-info">
-            <div class="step-code">ZREC0208</div>
-            <div class="step-desc">발주서 발송</div>
+          <div class="step-card wait">
+            <div class="step-num">6</div>
+            <div class="step-info">
+              <div class="step-code">ZREC0208</div>
+              <div class="step-desc">발주서 발송</div>
+            </div>
+            <div class="step-status">대기</div>
           </div>
-          <div class="step-status">대기</div>
         </div>
       </div>
       <div class="right-footer">
-        <div class="prog-bg"><div class="prog-fill"></div></div>
+        <div class="prog-bg"><div class="prog-fill" id="progFill" style="width:0%;"></div></div>
         <div class="prog-foot-row">
-          <div class="prog-text">1/3건 처리 중 · 2단계/6</div>
+          <div class="prog-text" id="progText">대기 중</div>
           <button class="log-btn" onclick="openLogModal()">로그</button>
         </div>
       </div>
@@ -763,7 +772,7 @@ tbody tr:nth-child(even):hover td.input-td {
   <div class="bot">
     <span class="bot-stat" id="filterStat"></span>
     <label class="test-lbl">
-      <input type="checkbox" checked style="width:13px;height:13px;">
+      <input type="checkbox" id="chkSkipTsrm" checked style="width:13px;height:13px;">
       TSRM 전송 건너뜀
     </label>
   </div>
@@ -895,12 +904,7 @@ function applyBulk(applyAll) {
 }
 
 /* ─────────────── 의뢰공사 목록 표 렌더링 ─────────────── */
-/* 브라우저 미리보기용 예시 데이터 (실제 실행 시 SAP 조회 결과로 교체됨) */
-var SAMPLE_ROWS = [
-  { cmp:"JS20260019", name:"춘천시 후평동 74-19번지 인입공급관", length:"5m", cost:"3,651,000", date:"2026.04.23" },
-  { cmp:"JS20260020", name:"춘천시 철전동 564-7번지 인입공급관", length:"2m", cost:"2,817,000", date:"2026.04.23" },
-  { cmp:"JS20260021", name:"춘천시 온의동 515-2번지 인입공급관", length:"7m", cost:"4,422,000", date:"2026.04.23" }
-];
+/* 표는 시작 시 비어 있고, 'SAP 리스트 불러오기'(ZREC0002) 결과로 채운다. */
 
 /* 일괄적용 바의 select 와 동일한 옵션을 가진 select 를 만든다(옵션 동기화). */
 function makeSelectLike(bulkId) {
@@ -997,8 +1001,7 @@ function normalizeRows(columns, rows) {
   });
 }
 
-/* 시작 시 예시 목록 표시(미리보기). 실제 앱에서도 '리스트 불러오기' 전까지 예시가 보인다. */
-renderRows(SAMPLE_ROWS);
+/* 시작 시 표는 비어 있음(실가동). 'SAP 리스트 불러오기' 후 채워진다. */
 
 /* ─────────────── 단가표 관리 모달 ─────────────── */
 /* 주의: 아래 PRICE_DATA 는 임시 시드값입니다.
@@ -1181,15 +1184,9 @@ function savePrices() {
 
 /* ─────────────── 처리 로그 모달 ─────────────── */
 /* 로그는 화면 메모리(LOG_ENTRIES)에 쌓입니다.
-   자동화 코드가 addLog(메시지, 등급) 로 기록하면 됩니다.
-   아래 예시 몇 줄은 화면 확인용이며, 실제 실행 시 지워지고 실기록이 쌓입니다. */
-var LOG_ENTRIES = [
-  { time: "09:12:03", level: "info",    msg: "프로그램 시작 · SAP 연결됨" },
-  { time: "09:12:20", level: "success", msg: "ZREC0002 접수 완료 (JS20260019)" },
-  { time: "09:12:41", level: "success", msg: "ZREC0100 공사번호 생성 · 2026A0038" },
-  { time: "09:13:02", level: "warn",    msg: "단가 불일치 — 수동 처리 필요 (JS20260021)" },
-  { time: "09:13:15", level: "error",   msg: "예상치 못한 SAP 팝업 감지 — 해당 건 중단" }
-];
+   자동화(파이썬)가 addLog(메시지, 등급) 로 기록하면 실시간으로 보입니다.
+   시작 시엔 비어 있고, 실행하면서 실제 기록이 쌓입니다. */
+var LOG_ENTRIES = [];
 
 function nowTime() {
   var d = new Date();
@@ -1310,6 +1307,149 @@ function loadRequestList() {
       addLog("의뢰공사 " + norm.length + "건 불러옴" +
              (excl > 0 ? " (10m 초과 " + excl + "건 제외)" : ""), "success");
     }
+  });
+}
+
+/* ═══════════ 실행 대상/단계 패널 (파이썬이 실시간 호출) ═══════════ */
+var STEP_CODES = ["ZREC0002","ZREC0100","ZMEC0210","ZREC2030","ZREC2040","ZREC0208"];
+
+function stepCards() { return document.querySelectorAll('#stepCards .step-card'); }
+
+/* 6단계 카드를 모두 '대기'로 초기화 */
+function resetSteps() {
+  stepCards().forEach(function(c, idx) {
+    c.className = 'step-card wait';
+    var n = c.querySelector('.step-num'); if (n) n.textContent = (idx + 1);
+    var s = c.querySelector('.step-status'); if (s) s.textContent = '대기';
+  });
+  setProg(0, '');
+}
+
+/* 진행바/문구 갱신 */
+function setProg(pct, text) {
+  var f = document.getElementById('progFill'); if (f) f.style.width = (pct || 0) + '%';
+  var t = document.getElementById('progText'); if (t && text != null && text !== '') t.textContent = text;
+}
+
+/* 실행 대상 목록 초기화 — names: 짧은 공사명 배열 */
+function runInit(names) {
+  names = names || [];
+  var box = document.getElementById('runList');
+  box.innerHTML = '';
+  names.forEach(function(nm) {
+    var row = document.createElement('div');
+    row.className = 'run-row';
+    var name = document.createElement('span');
+    name.className = 'run-name wait'; name.textContent = nm;
+    var ico = document.createElement('span');
+    ico.className = 'run-ico'; ico.innerHTML = '<span class="wait-dot"></span>';
+    row.appendChild(name); row.appendChild(ico);
+    box.appendChild(row);
+  });
+  document.getElementById('runCount').textContent = '0 / ' + names.length + ' 완료';
+  var cur = document.getElementById('runCurName');
+  if (cur) cur.textContent = names.length ? '실행 준비…' : '대기 중';
+  resetSteps();
+  setProg(0, '실행 준비…');
+}
+
+/* 공사 단위 상태 — status: 'cur'|'done'|'fail'|'wait' */
+function runWork(i, status, name) {
+  var rows = document.querySelectorAll('#runList .run-row');
+  var row = rows[i]; if (!row) return;
+  var nameEl = row.querySelector('.run-name');
+  var ico = row.querySelector('.run-ico');
+  var cls = (status === 'done') ? 'done' : (status === 'fail') ? 'fail'
+          : (status === 'cur') ? 'cur' : 'wait';
+  nameEl.className = 'run-name ' + cls;
+  if (status === 'done') ico.innerHTML = '<span class="check">✓</span>';
+  else if (status === 'fail') ico.innerHTML = '<span class="fail-mark">⚠️</span>';
+  else if (status === 'cur') {
+    ico.innerHTML = '<span class="spin"></span>';
+    resetSteps();
+    var cur = document.getElementById('runCurName');
+    if (cur) cur.textContent = name || nameEl.textContent;
+  } else ico.innerHTML = '<span class="wait-dot"></span>';
+  var done = document.querySelectorAll('#runList .run-name.done, #runList .run-name.fail').length;
+  document.getElementById('runCount').textContent = done + ' / ' + rows.length + ' 완료';
+}
+
+/* 단계 카드 상태 — i: 0~5, status: 'start'|'done'|'fail' */
+function runStep(i, status) {
+  var cards = stepCards();
+  var c = cards[i]; if (!c) return;
+  var num = c.querySelector('.step-num');
+  var st = c.querySelector('.step-status');
+  if (status === 'start') { c.className = 'step-card active'; if (num) num.textContent = (i + 1); if (st) st.textContent = '진행중'; }
+  else if (status === 'done') { c.className = 'step-card done'; if (num) num.textContent = '✓'; if (st) st.textContent = '완료'; }
+  else if (status === 'fail') { c.className = 'step-card fail'; if (num) num.textContent = '!'; if (st) st.textContent = '실패'; }
+  var doneN = document.querySelectorAll('#stepCards .step-card.done').length;
+  setProg(Math.round(doneN / cards.length * 100),
+          (STEP_CODES[i] || '') + ' ' + (status === 'done' ? '완료' : status === 'fail' ? '실패' : '진행중'));
+}
+
+/* 전체 종료 */
+function runFinish(ok, total) {
+  var cur = document.getElementById('runCurName');
+  if (cur) cur.textContent = '완료 · 성공 ' + ok + ' / 실패 ' + (total - ok);
+  setProg(100, '전체 완료 · 성공 ' + ok + '/' + total);
+}
+
+/* ═══════════ 선택 건 실행(수집 → 파이썬 호출) ═══════════ */
+/* 체크된 행에서 값을 모아 파이썬 run_selected() 로 보낸다. */
+function collectSelectedRows() {
+  var out = [];
+  document.querySelectorAll('#listBody tr').forEach(function(tr) {
+    var cb = tr.querySelector('input[type="checkbox"]');
+    if (!cb || !cb.checked) return;
+    var tds = tr.children;   /* 0체크 1상태 2구간코드 3구간명 4연장 5투자비 6의뢰일 ... */
+    var selects = tr.querySelectorAll('td.input-td select');
+    var dates = tr.querySelectorAll('td.input-td input.date-inp');
+    out.push({
+      cmp:    tds[2] ? tds[2].textContent.trim() : '',
+      name:   tds[3] ? tds[3].textContent.trim() : '',
+      length: tds[4] ? tds[4].textContent.trim() : '',
+      cost:   tds[5] ? tds[5].textContent.trim() : '',
+      date:   tds[6] ? tds[6].textContent.trim() : '',
+      dig:    selects[0] ? selects[0].value : '',
+      permit: selects[1] ? selects[1].value : '',
+      vendor: selects[2] ? selects[2].value : '',
+      start:  dates[0] ? dates[0].value : '',
+      end:    dates[1] ? dates[1].value : ''
+    });
+  });
+  return out;
+}
+
+function runSelected() {
+  if (!hasPython()) {
+    alert('브라우저 미리보기입니다.\n실제 실행은 앱(python main.py)에서 SAP 로그인 후 동작합니다.');
+    return;
+  }
+  var rows = collectSelectedRows();
+  if (!rows.length) { alert('실행할 건을 먼저 체크하세요.'); return; }
+
+  /* 최소 입력 점검(굴착/허가청/업체/기간) — 빈 건은 건너뜀(수동) */
+  var miss = rows.filter(function(r) { return !r.dig || !r.permit || !r.vendor || !r.start || !r.end; });
+  if (miss.length) {
+    if (!confirm(miss.length + '건은 입력(굴착/허가청/업체/기간)이 비어 있어 수동 처리로 건너뜁니다.\n계속 실행할까요?')) return;
+  }
+
+  var skipEl = document.getElementById('chkSkipTsrm');
+  var skipTsrm = skipEl ? skipEl.checked : true;
+  var btn = document.getElementById('runBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '실행 중…'; }
+  addLog('선택 ' + rows.length + '건 자동 발주 시작' + (skipTsrm ? ' (TSRM 생략)' : ' (TSRM 발송)'), 'info');
+
+  window.pywebview.api.run_selected(rows, skipTsrm).then(function(res) {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ 선택 건 실행'; }
+    if (!res || !res.ok) {
+      addLog('실행 실패 · ' + ((res && res.error) || '알 수 없음'), 'error');
+      alert('실행 실패: ' + ((res && res.error) || '알 수 없음'));
+      return;
+    }
+    var lvl = (res.success === res.total) ? 'success' : (res.success ? 'warn' : 'error');
+    addLog('자동 발주 종료 · 성공 ' + res.success + ' / 실패 ' + (res.total - res.success), lvl);
   });
 }
 </script>

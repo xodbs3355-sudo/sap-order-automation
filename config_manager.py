@@ -86,6 +86,37 @@ class ConfigManager:
         return [x for x in self.data.get("토목배관업체", [])
                 if x.get("code") and x.get("name")]
 
+    def permit_code(self, name):
+        """허가청 이름(예: '춘천시청') → 코드. 없으면 None."""
+        for x in self.permit_offices():
+            if str(x.get("name")).strip() == str(name).strip():
+                return x.get("code")
+        return None
+
+    def vendor_code(self, name):
+        """시공업체 이름(예: '국도건설') → 코드. 없으면 None."""
+        for x in self.vendors():
+            if str(x.get("name")).strip() == str(name).strip():
+                return x.get("code")
+        return None
+
+    # ── 지역(시/군·동 코드) ────────────────────────────────────
+    def _region(self):
+        return self.data.get("지역", {})
+
+    def sigun_code(self, sigun_name):
+        """구/군 이름(예: '춘천시') → 구/군 F4 코드. 미등록/빈값이면 None."""
+        code = self._region().get("구군코드", {}).get(str(sigun_name).strip())
+        return code or None
+
+    def sigun_names(self):
+        """등록된 구/군 이름 목록(코드 유무 무관)."""
+        return list(self._region().get("구군코드", {}).keys())
+
+    def dong_entries(self, sigun_name):
+        """해당 구/군의 동 목록 [{동읍면,법정,코드}, ...]. 없으면 빈 리스트."""
+        return self._region().get("동목록", {}).get(str(sigun_name).strip(), [])
+
     # ── 단가표 ─────────────────────────────────────────────────
     def _price_root(self):
         return self.data.get("단가표", {})
@@ -176,6 +207,39 @@ class ConfigManager:
 
         # Step 3. 불일치(또는 유일하지 않음) → 수동 처리
         return None
+
+    def lookup_price_smart(self, investment, prefer_year=None):
+        """연도를 몰라도 투자비로 재질/연장/PLP를 찾는다.
+
+        prefer_year(예: 의뢰일자·공사시작 연도)를 먼저 시도하고, 안 맞으면
+        등록된 모든 연도를 훑는다. 승인투자비는 연도마다 값이 달라 보통 한
+        연도에서만 유일하게 맞는다.
+          · 여러 연도가 걸려도 (재질·연장·PLP)가 동일하면 자재코드가 같으므로 사용.
+          · 연도별로 결과가 갈리면(재질/연장 다름) 모호 → None(수동).
+        반환: lookup_price 결과 dict + {"year": 사용연도, "years_matched": [...]}
+              또는 None.
+        """
+        years = self.years()
+        order = []
+        if prefer_year and str(prefer_year) in years:
+            order.append(str(prefer_year))
+        order += [y for y in years if y not in order]
+
+        found = []
+        for y in order:
+            r = self.lookup_price(investment, y)
+            if r:
+                found.append((y, r))
+        if not found:
+            return None
+        sig = {(r["material"], r["length"], r["with_plp"]) for _, r in found}
+        if len(sig) > 1:
+            return None  # 연도별로 결과가 갈림 → 모호(수동 처리)
+        y, r = found[0]
+        out = dict(r)
+        out["year"] = y
+        out["years_matched"] = [f[0] for f in found]
+        return out
 
     # ── 전체 검증 ──────────────────────────────────────────────
     def validate(self):

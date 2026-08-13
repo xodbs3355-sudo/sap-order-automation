@@ -142,6 +142,9 @@ def receive_request(session, row_index):
 
     설계서/녹화 기준: 행 선택 → 접수(btn[35]) → "예"(btnBUTTON_1).
     성공/실패 판단은 상위(자동화 흐름)에서 하단 메시지로 확인한다.
+
+    주의: 그리드가 이미 떠 있어야 한다(단건 테스트용). 다건 자동화에서는
+    행 번호가 접수 후 밀리므로 receive_by_cmp(구간코드 기준)를 쓴다.
     """
     grid = session.findById(GRID_ID)
     grid.currentCellColumn = ""
@@ -153,3 +156,65 @@ def receive_request(session, row_index):
         session.findById(CONFIRM_YES_ID).press()
     except Exception:
         pass  # 팝업이 없을 수도 있으니 무시
+
+
+def _find_cmp_row(grid, cmp_no):
+    """그리드에서 CMP(구간코드) 값이 cmp_no 인 행 인덱스를 찾는다. 없으면 None.
+
+    행 번호에 의존하지 않고 '구간코드'로 대상 행을 특정한다(접수 후 순번이
+    밀려도 안전).
+    """
+    target = str(cmp_no).strip()
+    # CMP 열 id 찾기
+    cmp_col = None
+    for cid in list(grid.ColumnOrder):
+        try:
+            title = grid.GetDisplayedColumnTitle(cid)
+        except Exception:
+            title = cid
+        if "CMP" in str(title).replace(" ", ""):
+            cmp_col = cid
+            break
+    if cmp_col is None:
+        return None
+    for r in range(grid.RowCount):
+        try:
+            if str(grid.GetCellValue(r, cmp_col)).strip() == target:
+                return r
+        except Exception:
+            continue
+    return None
+
+
+def receive_by_cmp(session, cmp_no):
+    """구간코드(CMP)로 대상 건을 재조회·선택해 접수한다(다건 자동화용).
+
+    처리: ZREC0002 재진입 → F8 조회 → CMP 로 행 특정 → 접수 → "예".
+    - 접수하면 그 건은 의뢰 목록에서 빠지므로, 매 건 재조회 후 CMP 로 찾는다.
+    - 대상이 없거나(이미 접수됨 등) CMP 를 못 찾으면 RuntimeError.
+    """
+    _open_and_query(session)
+
+    # 조회 결과가 없으면 '데이터 없음' 팝업 → 접수할 게 없음
+    if _dismiss_info_popup(session):
+        raise RuntimeError("의뢰 목록이 비어 있어 접수할 수 없습니다 (CMP=%s)." % cmp_no)
+
+    grid = session.findById(GRID_ID)
+    row = _find_cmp_row(grid, cmp_no)
+    if row is None:
+        raise RuntimeError(
+            "의뢰 목록에서 구간코드 %s 를 찾지 못했습니다 (이미 접수됐거나 대상 아님)." % cmp_no)
+
+    grid.currentCellColumn = ""
+    grid.selectedRows = str(row)
+
+    session.findById(RECEIVE_BTN_ID).press()      # 접수
+    try:
+        session.findById(CONFIRM_YES_ID).press()  # "예"
+    except Exception:
+        pass
+    # 상태바 메시지 반환(있으면)
+    try:
+        return str(session.findById("wnd[0]/sbar").text).strip()
+    except Exception:
+        return None

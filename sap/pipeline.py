@@ -14,8 +14,8 @@
     ZMEC0210 → 산업안전보건관리비 → (0208 특기사항에 사용)
 
 입력(work dict, 한 공사분) — 키는 영어(인코딩 안전):
-    row        : ZREC0002 그리드 행 인덱스(접수용). 목록을 미리 조회해 둔 상태여야 함.
-    cmp        : 구간코드 (ZREC0100 조회)
+    cmp        : 구간코드 — ZREC0002 접수 시 이 코드로 재조회·선택하고,
+                 ZREC0100 조회에도 사용(행 번호에 의존하지 않음).
     sigun      : 시/군 코드 (ZREC0100)
     dong       : 동읍면리 코드 (ZREC0100)
     permit     : 허가청 코드 (ZREC0100)
@@ -86,8 +86,8 @@ def run_one(session, work, on_progress=None):
         prog(code, "done", "" if result is None else str(result))
         return result
 
-    # 1) 공사의뢰 접수
-    step("ZREC0002", lambda: zrec0002.receive_request(session, work["row"]))
+    # 1) 공사의뢰 접수 — 구간코드(CMP)로 재조회·선택(접수 후 순번 밀림 방지)
+    step("ZREC0002", lambda: zrec0002.receive_by_cmp(session, work["cmp"]))
 
     # 2) 공사번호 생성
     gongsa_no = step("ZREC0100", lambda: zrec0100.create_work_order(
