@@ -37,7 +37,7 @@ BTN_MAKE = "wnd[0]/tbar[1]/btn[45]"            # 발주서 작성(→ 작성 화
 POP_OK = "wnd[1]/tbar[0]/btn[0]"               # 팝업 확인
 
 # ── 발주서 작성 화면(TAB02) ────────────────────────────────
-_T = "wnd[0]/usr/tabsTS_MAIN/tabpTAB02/ssubSA_MAIN:SAPMZEC0208:0110/"
+_T = "wnd[0]/usr/tabsTS_MAIN/tabpTAB01/ssubSA_MAIN:SAPMZEC0208:0100/"
 FLD_SGSYMD = _T + "ctxtIT_207-SGSYMD"          # 공사기간 시작
 FLD_EGSYMD = _T + "ctxtIT_207-EGSYMD"          # 공사기간 종료
 FLD_GEYO = _T + "txtIT_207-GEYO"               # 공사개요
