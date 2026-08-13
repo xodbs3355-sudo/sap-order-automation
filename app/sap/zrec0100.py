@@ -409,37 +409,6 @@ def _handle_save_popups(session, max_popups=5):
                 return
 
 
-def _requery(session, cmp_no):
-    """저장 직후 '공사번호 생성' 화면엔 새 번호가 표시되지 않으므로,
-    구간코드로 다시 조회(F8)해 우측 공사번호 트리에 번호가 뜨게 한다.
-
-    현재 화면에서 조회 필드에 바로 넣어 F8. 안 되면 T-code 재진입 후 조회.
-    조회 후 좌측 CMP 노드를 선택해 우측 공사번호/매핑이 표시되도록 한다
-    (1:1 버튼은 누르지 않음 — 재생성 방지).
-    """
-    def _do():
-        session.findById(SEL_CMP_FIELD).text = cmp_no
-        session.findById("wnd[0]").sendVKey(8)   # F8 조회
-        try:
-            tree = session.findById(CMP_TREE)
-            keys = list(tree.GetAllNodeKeys())
-            if keys:
-                tree.selectNode(keys[0])
-        except Exception:
-            pass
-
-    try:
-        _do()
-        return
-    except Exception:
-        pass
-    try:
-        connector.go_tcode(session, "ZREC0100")
-        _do()
-    except Exception:
-        pass
-
-
 def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_permit):
     """ZREC0100 으로 공사번호를 생성하고 그 번호를 반환한다.
 
@@ -474,15 +443,15 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
     _f4_search_select(session, POP_DONG, dong_code)    # 동읍면리 (많음 → 찾기 검색)
     session.findById(POP_HGYN).key = dig_permit         # 굴착허가 1/2
     session.findById(POP_GUCD1).text = permit_code      # 허가청 코드 직접
-    session.findById(POP_CONFIRM).press()               # 팝업 확인
+    session.findById(POP_CONFIRM).press()               # 팝업 확인 → 우측 트리에 공사번호 표시
 
-    # 5) 저장 → 팝업 텍스트에 따라 안전 처리
-    #    (정보조회 이동?→아니오 로 화면 유지, 저장?→예. 팝업 순서/개수 달라도 안전)
+    # 5) ★ 저장 '전에' 공사번호를 읽는다.
+    #    저장하면(→'정보조회 이동?' 아니오) 우측 트리에서 공사번호가 사라지므로,
+    #    번호가 화면에 보이는 지금(확인 직후·저장 전) 시점에 읽어야 한다.
+    gongsa_no = _read_gongsa_no(session)
+
+    # 6) 저장 → 팝업 처리 (저장?→예, 정보조회 이동?→아니오)
     session.findById(BTN_SAVE).press()
     _handle_save_popups(session)
 
-    # 6) 재조회 → 공사번호 읽기
-    #    저장 직후 '공사번호 생성' 화면엔 새 번호가 표시되지 않는다(진단 확인).
-    #    구간코드로 다시 조회(F8)해 우측 공사번호 트리에 번호를 띄운 뒤 읽는다.
-    _requery(session, cmp_no)
-    return _read_gongsa_no(session)
+    return gongsa_no
