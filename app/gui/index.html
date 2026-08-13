@@ -8,10 +8,12 @@
   font-family: 'Gmarket Sans';
   font-weight: 700;
   src: url('assets/fonts/GmarketSansBold.ttf');
+  font-display: swap;   /* 폰트를 기다리지 않고 즉시 기본폰트로 표시 → 흰 화면 방지 */
 }
 @font-face {
   font-family: 'Nanum Gothic';
   src: url('assets/fonts/NanumGothic.ttf');
+  font-display: swap;   /* 로드되면 자연스럽게 교체(FOIT 제거) */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -1555,6 +1557,15 @@ function showReport(res) {
 function closeReportModal() {
   document.getElementById('reportModal').classList.remove('open');
 }
+
+/* 성능 계측: 화면(API) 준비되면 파이썬에 알려 '시작~렌더' 시간을 로그에 남긴다. */
+window.addEventListener('pywebviewready', function () {
+  try {
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.gui_ready) {
+      window.pywebview.api.gui_ready();
+    }
+  } catch (e) {}
+});
 </script>
 </body>
 </html>

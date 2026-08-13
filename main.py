@@ -8,6 +8,19 @@ pywebview로 gui/index.html 을 로컬 데스크탑 창으로 띄운다.
 """
 
 import os
+import sys
+import time
+
+# 시작 시각(성능 계측용). 프로세스 시작 직후 기록해, 각 단계까지 걸린 시간을 잰다.
+_START = time.perf_counter()
+
+# 폴더 정리: 실행 파일(main.py)만 루트에 두고, 나머지 코드·자원은 app/ 폴더에 있다.
+# app/ 을 파이썬 모듈 검색 경로에 추가해, 아래 import(config_manager·sap·applog)를
+# 예전과 똑같이 쓸 수 있게 한다. (설정·GUI·로그 경로는 각 파일 기준 상대경로라 유지됨)
+_APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
 import json
 
 import webview
@@ -47,9 +60,8 @@ def _short_name(name):
 
 
 def get_gui_path() -> str:
-    """gui/index.html 의 절대 경로를 반환한다."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "gui", "index.html")
+    """app/gui/index.html 의 절대 경로를 반환한다."""
+    return os.path.join(_APP_DIR, "gui", "index.html")
 
 
 class Api:
@@ -84,6 +96,15 @@ class Api:
             self.window.evaluate_js("%s(%s)" % (fn, payload))
         except Exception:
             pass
+
+    def gui_ready(self):
+        """화면(브라우저) 렌더가 끝나 API가 준비됐을 때 화면이 호출(성능 계측).
+
+        시작부터 실제 화면 표시까지 걸린 시간을 로그에 남긴다.
+        '창 생성 완료' 로그와 이 값의 차이 = WebView(브라우저) 부팅+렌더 시간.
+        """
+        applog.success("⏱ 화면 표시 완료 · 시작~렌더 %.2f초" % (time.perf_counter() - _START))
+        return True
 
     # ── 단가표 ─────────────────────────────────────────────
     def get_price_table(self):
@@ -355,7 +376,10 @@ class Api:
 
 def main() -> None:
     """pywebview 창을 생성하고 GUI 를 실행한다."""
+    applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
+    applog.info("⏱ 모듈 로드 완료 · +%.2f초" % (time.perf_counter() - _START))
     api = Api()
+    applog.info("⏱ 설정 로드 완료 · +%.2f초" % (time.perf_counter() - _START))
     window = webview.create_window(
         title="SAP Work Order Automation",
         url=get_gui_path(),
@@ -370,7 +394,8 @@ def main() -> None:
     # 화면 연결: 파이썬 로그를 처리 로그 창에도 실시간으로 찍는다.
     api.window = window
     applog.set_gui_emit(lambda m, l: api._js("addLog", m, l))
-    applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
+    applog.info("⏱ 창 생성 완료 · +%.2f초 (이후 WebView 부팅+화면 렌더)"
+                % (time.perf_counter() - _START))
     webview.start()
 
 
