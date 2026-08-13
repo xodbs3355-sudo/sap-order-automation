@@ -251,16 +251,27 @@ class Api:
             sname = _short_name(row.get("name") or cmp)
             self._js("runWork", i, "cur", sname)
 
+            # 완료 리포트용 한 줄(상태: skip=건너뜀 / success=성공 / fail=실패)
+            rep = {"status": "skip", "cmp": cmp,
+                   "name": str(row.get("name") or ""),
+                   "dong": "", "material": "", "vendor": "",
+                   "gongsa_no": "", "reason": ""}
+
             work, err = self._build_work(row, skip_tsrm)
             if err:
-                applog.warn("[%d/%d] %s — 준비 실패: %s"
+                rep["reason"] = err
+                applog.warn("[%d/%d] %s — 준비 실패(건너뜀): %s"
                             % (i + 1, len(rows), cmp, err))
                 self._js("runWork", i, "fail", sname)
-                results.append({"ok": False, "cmp": cmp, "step": "준비", "error": err})
+                results.append(rep)
                 continue
 
             reg = work["_region"]
             lp = work["_price"]
+            rep["dong"] = "%s(%s)" % (reg["dong_name"], reg["dong_code"])
+            rep["material"] = "%s %sm%s" % (work["road"], work["length"],
+                                            " · PLP" if work["plp"] else "")
+            rep["vendor"] = work["_vendor_name"]
             applog.info(
                 "[%d/%d] %s 준비완료 → 시군 %s(%s)/동 %s(%s) · 재질 %s·연장 %sm·PLP %s "
                 "(투자비 %s원, %s년) · 허가청 %s(%s)/굴착 %s · 업체 %s(%s) · 기간 %s~%s"
@@ -286,33 +297,37 @@ class Api:
             try:
                 res = pipeline.run_one(session, work, on_progress=on_prog)
                 self._js("runWork", i, "done", sname)
+                rep["status"] = "success"
+                rep["gongsa_no"] = res.get("gongsa_no") or ""
+                rep["safety"] = res.get("safety")
                 applog.success(
                     "[%d/%d] %s 발주 완료 · 공사번호 %s · 산안비 %s"
                     % (i + 1, len(rows), cmp, res.get("gongsa_no"), res.get("safety")))
-                results.append({"ok": True, "cmp": cmp,
-                                "gongsa_no": res.get("gongsa_no"),
-                                "safety": res.get("safety")})
             except pipeline.PipelineError as e:
                 idx = _STEP_INDEX.get(e.step)
                 if idx is not None:
                     self._js("runStep", idx, "fail")
                 self._js("runWork", i, "fail", sname)
+                rep["status"] = "fail"
+                rep["reason"] = "%s 단계: %s" % (e.step, e.cause)
                 applog.exc("[%d/%d] %s — %s 단계 실패: %s"
                            % (i + 1, len(rows), cmp, e.step, e.cause))
-                results.append({"ok": False, "cmp": cmp,
-                                "step": e.step, "error": str(e.cause)})
             except Exception as e:
                 self._js("runWork", i, "fail", sname)
+                rep["status"] = "fail"
+                rep["reason"] = "예상치 못한 오류: %s" % e
                 applog.exc("[%d/%d] %s — 예상치 못한 오류: %s"
                            % (i + 1, len(rows), cmp, e))
-                results.append({"ok": False, "cmp": cmp,
-                                "step": "오류", "error": str(e)})
+            results.append(rep)
 
-        ok_n = sum(1 for r in results if r.get("ok"))
-        applog.section("자동 발주 종료 · 성공 %d / 실패 %d" % (ok_n, len(results) - ok_n))
-        self._js("runFinish", ok_n, len(results))
-        return {"ok": True, "results": results,
-                "success": ok_n, "total": len(results)}
+        n_ok = sum(1 for r in results if r["status"] == "success")
+        n_skip = sum(1 for r in results if r["status"] == "skip")
+        n_fail = sum(1 for r in results if r["status"] == "fail")
+        applog.section("자동 발주 종료 · 성공 %d / 실패 %d / 건너뜀 %d"
+                       % (n_ok, n_fail, n_skip))
+        self._js("runFinish", n_ok, len(results))
+        return {"ok": True, "results": results, "success": n_ok,
+                "fail": n_fail, "skipped": n_skip, "total": len(results)}
 
     # ── SAP 연결 ───────────────────────────────────────────
     def check_sap_connection(self):

@@ -601,6 +601,29 @@ tbody tr:nth-child(even):hover td.input-td {
 .log-line.warn .log-msg { color: #d68a0c; }
 .log-line.error .log-msg { color: #d0455f; }
 .log-empty { color: #9aa3b5; padding: 20px; text-align: center; }
+
+/* ── 실행 결과 리포트 모달 ── */
+.modal.report { width: 1000px; max-width: 100%; height: 80vh; }
+.report-summary { padding: 12px 20px; font-size: 13px; font-weight: 700; color: #212842;
+  border-bottom: 1px solid #dde0e8; background: #fbfbfc; }
+.report-summary .r-ok   { color: #1f9d57; }
+.report-summary .r-fail { color: #d0455f; }
+.report-summary .r-skip { color: #d68a0c; }
+.report-wrap { flex: 1; overflow: auto; }
+.report-tbl { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.report-tbl th { position: sticky; top: 0; z-index: 1; background: #eef0f4; color: #6070a0;
+  font-size: 11px; font-weight: 600; padding: 8px 10px; text-align: left;
+  border-bottom: 1px solid #dde0e8; border-right: 1px solid #dde0e8; }
+.report-tbl th:last-child { border-right: none; }
+.report-tbl td { font-size: 12px; color: #212842; padding: 7px 10px;
+  border-bottom: 1px solid #f0f2f5; border-right: 1px solid #f0f2f5; }
+.report-tbl td:last-child { border-right: none; }
+.report-tbl tr:hover td { background: #f6f7fb; }
+.report-tbl td.r-reason { color: #8a93a8; white-space: normal; word-break: break-all; }
+.badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.badge.success { background: #eaf7ef; color: #1f9d57; }
+.badge.fail    { background: #fdecea; color: #d0455f; }
+.badge.skip    { background: #fff5e6; color: #d68a0c; }
 </style>
 </head>
 <body>
@@ -831,6 +854,40 @@ tbody tr:nth-child(even):hover td.input-td {
         <button class="btn-warn" onclick="clearLogs()">로그 지우기</button>
       </div>
       <button class="btn-out" onclick="closeLogModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 실행 결과 리포트 모달 (선택 건 실행 완료 후 자동으로 뜸) -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal report">
+    <div class="modal-head">
+      <div class="modal-title">📊 실행 결과 리포트</div>
+      <button class="modal-close" onclick="closeReportModal()">✕</button>
+    </div>
+    <div class="report-summary" id="reportSummary"></div>
+    <div class="report-wrap">
+      <table class="report-tbl">
+        <thead>
+          <tr>
+            <th style="width:64px;">상태</th>
+            <th style="width:98px;">구간코드</th>
+            <th>구간명</th>
+            <th style="width:150px;">인식된 동(코드)</th>
+            <th style="width:112px;">재질/연장</th>
+            <th style="width:88px;">시공업체</th>
+            <th style="width:96px;">공사번호</th>
+            <th style="width:230px;">비고(사유)</th>
+          </tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-foot">
+      <div class="left-btns">
+        <button class="btn-out" onclick="openLogModal()">로그 보기</button>
+      </div>
+      <button class="btn-main" onclick="closeReportModal()">닫기</button>
     </div>
   </div>
 </div>
@@ -1448,9 +1505,51 @@ function runSelected() {
       alert('실행 실패: ' + ((res && res.error) || '알 수 없음'));
       return;
     }
+    var fail = res.fail != null ? res.fail : 0;
+    var skip = res.skipped != null ? res.skipped : 0;
     var lvl = (res.success === res.total) ? 'success' : (res.success ? 'warn' : 'error');
-    addLog('자동 발주 종료 · 성공 ' + res.success + ' / 실패 ' + (res.total - res.success), lvl);
+    addLog('자동 발주 종료 · 성공 ' + res.success + ' / 실패 ' + fail + ' / 건너뜀 ' + skip, lvl);
+    showReport(res);
   });
+}
+
+/* ═══════════ 실행 결과 리포트 (완료 후 자동 팝업) ═══════════ */
+function showReport(res) {
+  var rows = (res && res.results) || [];
+  var body = document.getElementById('reportBody');
+  body.innerHTML = '';
+  var LABEL = { success: '성공', fail: '실패', skip: '건너뜀' };
+  rows.forEach(function(r) {
+    var tr = document.createElement('tr');
+    function cell(txt, cls) {
+      var d = document.createElement('td');
+      if (cls) d.className = cls;
+      d.textContent = (txt == null ? '' : txt);
+      return d;
+    }
+    var st = document.createElement('td');
+    var s = r.status || 'skip';
+    st.innerHTML = '<span class="badge ' + s + '">' + (LABEL[s] || s) + '</span>';
+    tr.appendChild(st);
+    tr.appendChild(cell(r.cmp));
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.dong || '—'));
+    tr.appendChild(cell(r.material || '—'));
+    tr.appendChild(cell(r.vendor || '—'));
+    tr.appendChild(cell(r.gongsa_no || '—'));
+    tr.appendChild(cell(r.reason || '', 'r-reason'));
+    body.appendChild(tr);
+  });
+  var ok = res.success || 0, fail = res.fail || 0, skip = res.skipped || 0;
+  var total = res.total || rows.length;
+  document.getElementById('reportSummary').innerHTML =
+    '총 ' + total + '건 · <span class="r-ok">성공 ' + ok + '</span> · ' +
+    '<span class="r-fail">실패 ' + fail + '</span> · ' +
+    '<span class="r-skip">건너뜀 ' + skip + '</span>';
+  document.getElementById('reportModal').classList.add('open');
+}
+function closeReportModal() {
+  document.getElementById('reportModal').classList.remove('open');
 }
 </script>
 </body>
