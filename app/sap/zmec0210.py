@@ -7,7 +7,10 @@
     3. 사양 탭(TAB03): 압력=LP, 재질=PEI, 관경=63(고정) + 연장(가변) 입력
     4. 자재 탭(TAB07): 부위코드별 단가코드/수량 입력 (줄마다 부위코드도 입력)
          · 배관공사(부위 31101): 도로재질 자재코드(수량1) [+ PLP옵션(수량1)]
-         · 점용료(부위 91103): 261501(수량=연장×30) + 291509(제출비용, 수량1)
+         · 점용료(부위 91103): 상황에 따라 조건부 입력
+             - 사유지        : 없음(261501·291509 모두 제외)
+             - 공용지·면제    : 291509(신청수수료)만
+             - 공용지·부과    : 261501(수량=연장×30) + 291509(신청수수료)
     5. 저장 → "예"
     6. TAB01에서 확인 체크(SCHK13) → 저장 → "예" → 확인
     7. 산업안전보건관리비(자동계산 금액) 라벨 읽기 → 반환
@@ -30,6 +33,11 @@ import re
 
 from sap import connector
 from config_manager import ConfigManager
+
+try:
+    import applog
+except Exception:  # applog 없이도 동작하도록(로그만 생략)
+    applog = None
 
 # ── 화면 요소 주소 (녹화 실측) ─────────────────────────────
 SEL_GSCD = "wnd[0]/usr/ctxtGV_GSCD"                 # 공사번호 입력
@@ -77,6 +85,15 @@ SPEC_QUALITY = "PEI"     # 재질 (고정)
 SPEC_PI = "63"           # 관경 63A (고정)
 
 OCCUPY_DAYS = 30         # 점용 일수 (인입공급관 = 1개월 고정)
+
+
+def _occ_log(msg):
+    """점용료 처리 결정을 로그로 남긴다(applog 없으면 조용히 생략)."""
+    if applog:
+        try:
+            applog.info("[점용료] " + msg)
+        except Exception:
+            pass
 
 
 def _enter_row(session, r, bwcd, jajae, sura):
@@ -157,7 +174,8 @@ def _read_safety_cost(session):
     return None
 
 
-def create_design_budget(session, gongsa_no, road_material, length, plp=False, cfg=None):
+def create_design_budget(session, gongsa_no, road_material, length, plp=False,
+                         cfg=None, sigun_code=None, private_land=False):
     """ZMEC0210 으로 설계예산서를 작성하고 산업안전보건관리비를 반환한다.
 
     인자:
@@ -166,8 +184,16 @@ def create_design_budget(session, gongsa_no, road_material, length, plp=False, c
         length        : 연장(m) 1~10 (정수)
         plp           : 기존관 PLP 여부 (True 면 PLP옵션 단가코드 1줄 추가)
         cfg           : ConfigManager (없으면 새로 생성) — 단가표 자재코드 조회용
+        sigun_code    : 시/군 코드(예 "51110") — 점용료 면제 판정(개착폭)에 사용.
+                        미확인이면 춘천 기준(1.0)으로 판정.
+        private_land  : 사유지 여부. True 면 점용료 2줄(261501·291509) 모두 제외.
     반환:
         산업안전보건관리비 금액 문자열(예: "1,234,567") 또는 None(읽기 실패)
+
+    점용료 처리 규칙:
+        · 사유지            → 점용료·신청수수료 둘 다 제외
+        · 공용지·면제        → 판정금액 ≤ 면제기준 이면 점용료(261501)만 제외, 신청수수료(291509)는 유지
+        · 공용지·부과        → 점용료(수량=연장×점용일수) + 신청수수료 둘 다 입력
     """
     cfg = cfg or ConfigManager()
     length = int(length)
@@ -182,8 +208,19 @@ def create_design_budget(session, gongsa_no, road_material, length, plp=False, c
     rows = [(BWCD_PIPE, road_code, "1")]                       # 배관공사: 도로재질(수량1)
     if plp:
         rows.append((BWCD_PIPE, cfg.plp_code(), "1"))          # 배관공사: PLP옵션(수량1)
-    rows.append((BWCD_FEE, CODE_OCCUPY, str(length * OCCUPY_DAYS)))  # 점용료(연장×30)
-    rows.append((BWCD_FEE, CODE_SUBMIT, "1"))                  # 제출비용(수량1)
+
+    # 2-1) 점용료 2줄 — 사유지/면제 규칙 적용
+    if private_land:
+        _occ_log("사유지 → 점용료·신청수수료 모두 제외")
+    else:
+        fee = cfg.occupancy_fee(sigun_code, length)            # 면제 판정금액(SAP 수량과 무관)
+        if cfg.is_occupancy_exempt(sigun_code, length):
+            _occ_log("점용료 면제(판정 %s원 ≤ %s원) → 점용료 제외, 신청수수료만 입력"
+                     % (format(fee, ","), format(cfg.occupancy_exempt_threshold(), ",")))
+        else:
+            _occ_log("점용료 부과(판정 %s원) → 점용료+신청수수료 입력" % format(fee, ","))
+            rows.append((BWCD_FEE, CODE_OCCUPY, str(length * OCCUPY_DAYS)))  # 점용료(연장×30)
+        rows.append((BWCD_FEE, CODE_SUBMIT, "1"))              # 신청수수료(면제여도 유지, 수량1)
 
     # 3) ZMEC0210 진입 + 공사번호 조회
     #    ※ 이 화면은 Enter 1번으로는 코드만 확정되고, 2번째 Enter라야

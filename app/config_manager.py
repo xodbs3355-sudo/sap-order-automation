@@ -22,6 +22,9 @@ DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 MATERIALS = ("ASP", "CONC")   # ASP=절삭포장, CONC=CON'C 및 보도블럭(ASP 外)
 LENGTHS = [str(n) for n in range(1, 11)]   # "1" ~ "10" (m)
 
+# 허가청 콤보에서 '사유지'(도로점용 없음 → 점용료 자재 2줄 모두 제외)를 뜻하는 값
+PRIVATE_LAND_LABEL = "해당없음"
+
 
 class ConfigError(Exception):
     """설정 파일을 읽거나 해석하지 못했을 때 발생."""
@@ -241,6 +244,42 @@ class ConfigManager:
         out["years_matched"] = [f[0] for f in found]
         return out
 
+    # ── 점용료(면제 판정) ──────────────────────────────────────
+    def _occupancy(self):
+        return self.data.get("점용료", {})
+
+    def occupancy_width(self, sigun_code):
+        """시/군 코드 → 개착폭(m). 권역 미확인/미등록이면 춘천 기준 1.0."""
+        widths = self._occupancy().get("개착폭", {})
+        w = widths.get(str(sigun_code).strip())
+        try:
+            return float(w) if w is not None else 1.0
+        except (TypeError, ValueError):
+            return 1.0
+
+    def occupancy_fee(self, sigun_code, length):
+        """점용료 판정금액 = 연장 × 개착폭 × 점용일수 × 일단가 (면제 판단 전용).
+
+        ※ 이 값은 '면제 여부'를 정하는 계산일 뿐, SAP 자재 수량과는 무관하다
+          (SAP 점용료 수량은 개착폭을 반영하지 않고 연장×점용일수 그대로 넣는다).
+        """
+        o = self._occupancy()
+        days = o.get("점용일수", 30)
+        rate = o.get("일단가", 75)
+        try:
+            return int(round(float(length) * self.occupancy_width(sigun_code)
+                             * float(days) * float(rate)))
+        except (TypeError, ValueError):
+            return 0
+
+    def occupancy_exempt_threshold(self):
+        """점용료 면제 기준 금액(판정금액이 이 값 이하이면 면제)."""
+        return self._occupancy().get("면제기준", 10000)
+
+    def is_occupancy_exempt(self, sigun_code, length):
+        """점용료 면제 대상인지(판정금액 ≤ 면제기준). 권역 미확인이면 춘천 기준."""
+        return self.occupancy_fee(sigun_code, length) <= self.occupancy_exempt_threshold()
+
     # ── 전체 검증 ──────────────────────────────────────────────
     def validate(self):
         """설정 전체를 점검해 문제 목록(list[str])을 반환. 비어 있으면 정상."""
@@ -278,6 +317,14 @@ def _self_check():
     for inv in tests:
         result = cfg.lookup_price(inv, "2026")
         print("  투자비 %10s →" % format(inv, ","), result)
+
+    print("-" * 50)
+    print("[점용료 면제 판정 예시]")
+    for sigun, nm in (("51110", "춘천"), ("51720", "홍천")):
+        for L in (3, 4, 5):
+            fee = cfg.occupancy_fee(sigun, L)
+            state = "면제" if cfg.is_occupancy_exempt(sigun, L) else "부과"
+            print("  %s %2dm → %8s원 · %s" % (nm, L, format(fee, ","), state))
 
     print("-" * 50)
     problems = cfg.validate()

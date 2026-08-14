@@ -416,7 +416,7 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
         cmp_no      : 구간코드 (예: "JM20260006")
         sigun_code  : 시/군 코드 (예: "51110")
         dong_code   : 동읍면리 코드 (예: "31022")  ※ 시/군 먼저 → 동 순서로 입력
-        permit_code : 허가청 코드 (예: "2218300385")
+        permit_code : 허가청 코드 (예: "2218300385"). 빈값("")이면 사유지 → 허가청 칸 미입력
         dig_permit  : 굴착허가 "1"(대상) / "2"(비대상)
     반환:
         생성된 공사번호(str, 예 "2026A0043") 또는 None(읽기 실패)
@@ -442,7 +442,8 @@ def create_work_order(session, cmp_no, sigun_code, dong_code, permit_code, dig_p
     _f4_pick_direct(session, POP_GU, sigun_code)       # 구/군 (18개, 팝업서 바로 선택)
     _f4_search_select(session, POP_DONG, dong_code)    # 동읍면리 (많음 → 찾기 검색)
     session.findById(POP_HGYN).key = dig_permit         # 굴착허가 1/2
-    session.findById(POP_GUCD1).text = permit_code      # 허가청 코드 직접
+    if permit_code:                                     # 사유지면 허가청 코드가 빈값 → 칸 미입력
+        session.findById(POP_GUCD1).text = permit_code  # 허가청 코드 직접
     session.findById(POP_CONFIRM).press()               # 팝업 확인 → 우측 트리에 공사번호 표시
 
     # 5) ★ 저장 '전에' 공사번호를 읽는다.

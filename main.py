@@ -26,7 +26,7 @@ import json
 import webview
 
 import applog
-from config_manager import ConfigManager
+from config_manager import ConfigManager, PRIVATE_LAND_LABEL
 
 # pywebview(WebView2)가 접근성 관련 오류를 터미널에 대량으로 찍는 경우가 있어
 # (동작엔 지장 없음) 로그 소음·부하를 줄이려 pywebview 로거를 잠재운다.
@@ -224,10 +224,16 @@ class Api:
             return None, "굴착허가가 선택되지 않았습니다."
 
         # 허가청 이름 → 코드
+        #  · '해당없음' = 사유지(도로점용 없음). 코드 없이 사유지로 정상 처리하며,
+        #    ZREC0100 허가청 칸은 비우고, ZMEC0210 점용료 2줄(261501·291509)은 모두 제외.
         permit_name = str(row.get("permit") or "").strip()
-        permit = self.cfg.permit_code(permit_name)
-        if not permit:
-            return None, "허가청 미선택/미등록: '%s'" % permit_name
+        private_land = (permit_name == PRIVATE_LAND_LABEL)
+        if private_land:
+            permit = ""          # 허가청 코드 없음(사유지)
+        else:
+            permit = self.cfg.permit_code(permit_name)
+            if not permit:
+                return None, "허가청 미선택/미등록: '%s'" % permit_name
 
         # 시공업체 이름 → 코드
         vendor_name = str(row.get("vendor") or "").strip()
@@ -262,6 +268,7 @@ class Api:
             "sigun": reg["sigun_code"],
             "dong": reg["dong_code"],
             "permit": permit,
+            "private_land": private_land,
             "dig": dig,
             "road": lp["material"],
             "length": lp["length"],

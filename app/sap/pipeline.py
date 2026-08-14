@@ -18,7 +18,8 @@
                  ZREC0100 조회에도 사용(행 번호에 의존하지 않음).
     sigun      : 시/군 코드 (ZREC0100)
     dong       : 동읍면리 코드 (ZREC0100)
-    permit     : 허가청 코드 (ZREC0100)
+    permit     : 허가청 코드 (ZREC0100). 사유지면 "" (빈값 → 허가청 칸 미입력)
+    private_land : 사유지 여부(bool). True 면 ZMEC0210 점용료 2줄 모두 제외
     dig        : 굴착허가 "1"(대상)/"2"(비대상) (ZREC0100)
     road       : 도로재질 "ASP"/"CONC" (ZMEC0210)
     length     : 연장(m) (ZMEC0210 자재·수량, ZREC0208 공사개요)
@@ -98,8 +99,10 @@ def run_one(session, work, on_progress=None):
         raise PipelineError("ZREC0100", "공사번호를 읽지 못했습니다.")
 
     # 3) 설계예산서 작성 → 산업안전보건관리비
+    #    사유지(private_land)면 점용료 2줄 제외, 아니면 권역(sigun)·연장으로 면제 판정.
     safety = step("ZMEC0210", lambda: zmec0210.create_design_budget(
-        session, gongsa_no, work["road"], work["length"], work.get("plp", False)))
+        session, gongsa_no, work["road"], work["length"], work.get("plp", False),
+        sigun_code=work.get("sigun"), private_land=work.get("private_land", False)))
 
     # 4) 발주구간 생성(업체 지정)
     step("ZREC2030", lambda: zrec2030.create_order_section(
