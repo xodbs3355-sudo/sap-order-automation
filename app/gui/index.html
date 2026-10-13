@@ -418,6 +418,24 @@ td input[readonly] {
 }
 .bulk-btn-all { background: #212842; color: #fff; }
 .bulk-btn-sel { background: #fff; color: #212842; border: 1px solid #c0c8d8; }
+.bulk-btn-undo { background: #fff; color: #6070a0; border: 1px solid #c0c8d8; }
+.bulk-btn-undo:disabled { opacity: 0.4; cursor: default; }
+.bulk-btn-clear { background: #fff; color: #d0455f; border: 1px solid #e6b3bf; }
+
+/* ── 토스트(간단 알림) ── */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: #212842; color: #fff; padding: 10px 18px; border-radius: 10px;
+  font-size: 12.5px; box-shadow: 0 6px 20px rgba(33,40,66,0.3);
+  z-index: 200; display: flex; align-items: center; gap: 12px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.toast.show { opacity: 1; pointer-events: auto; }
+.toast button {
+  background: none; border: 1px solid #5a6a9a; color: #cdd6ef;
+  border-radius: 6px; padding: 3px 10px; font-size: 11.5px; cursor: pointer; font-weight: 600;
+}
+.toast button:hover { background: #2d3658; }
 
 /* ── 입력 컬럼 td 패딩 축소 ── */
 td.input-td {
@@ -659,6 +677,7 @@ tbody tr:nth-child(even):hover td.input-td {
             <tr class="bulk-btn-tr">
               <td colspan="7" style="background:#f8f9fb; border-bottom:1px solid #dde0e8; padding:6px 12px; text-align:left;">
                 <span class="list-title">SAP 의뢰공사 리스트</span>
+                <button class="bulk-btn bulk-btn-clear" onclick="clearSelectedInputs()" style="float:right;" title="체크된 행의 입력값(굴착/허가청/업체/기간)만 비웁니다">선택행 입력정보 지우기</button>
               </td>
               <td style="background:#f8f9fb; border-bottom:1px solid #dde0e8; border-left:none; border-right:none; padding:5px 5px; text-align:center;">
                 <span class="bulk-label">일괄적용</span>
@@ -667,6 +686,8 @@ tbody tr:nth-child(even):hover td.input-td {
                 <button class="bulk-btn bulk-btn-sel" onclick="applyBulk(false)">선택 적용</button>
                 &nbsp;
                 <button class="bulk-btn bulk-btn-all" onclick="applyBulk(true)">전체 적용</button>
+                &nbsp;
+                <button class="bulk-btn bulk-btn-undo" id="undoBtn" onclick="undoLast()" disabled title="직전 입력 상태로 되돌리기">↩ 되돌리기</button>
               </td>
             </tr>
             <!-- 일괄 입력 행 -->
@@ -802,7 +823,7 @@ tbody tr:nth-child(even):hover td.input-td {
   <div class="bot">
     <span class="bot-stat" id="filterStat"></span>
     <label class="test-lbl">
-      <input type="checkbox" id="chkSkipTsrm" checked style="width:13px;height:13px;">
+      <input type="checkbox" id="chkSkipTsrm" style="width:13px;height:13px;">
       TSRM 전송 건너뜀
     </label>
   </div>
@@ -899,6 +920,24 @@ tbody tr:nth-child(even):hover td.input-td {
   </div>
 </div>
 
+<!-- 전체 적용 확인 모달 -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal" style="width:420px;">
+    <div class="modal-head">
+      <div class="modal-title">⚠️ 전체 적용 확인</div>
+      <button class="modal-close" onclick="closeConfirm(false)">✕</button>
+    </div>
+    <div class="modal-body" id="confirmBody" style="padding:22px 24px; font-size:13px; color:#212842; line-height:1.7;"></div>
+    <div class="modal-foot" style="justify-content:flex-end; gap:8px;">
+      <button class="btn-out" onclick="closeConfirm(false)">취소</button>
+      <button class="btn-main" onclick="closeConfirm(true)">전체 적용</button>
+    </div>
+  </div>
+</div>
+
+<!-- 토스트(간단 알림) -->
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastAction" style="display:none;"></button></div>
+
 <script>
 /* 하단 카운터 갱신: 선택 N건 / 전체 N건 (실제 값). */
 function updateCounts() {
@@ -945,13 +984,129 @@ function toggleRow(cb) {
   updateCounts();
 }
 
+/* ─────────────── 일괄적용 · 되돌리기 · 선택행 지우기 ─────────────── */
+
+var _undoSnapshot = null;   /* 직전 입력 상태(1단계 되돌리기용) */
+
+/* 현재 표의 모든 행 입력값/체크상태를 스냅샷으로 뜬다. */
+function snapshotRows() {
+  var snap = [];
+  document.querySelectorAll('#listBody tr').forEach(function(tr) {
+    var cb = tr.querySelector('input[type="checkbox"]');
+    var selects = tr.querySelectorAll('td.input-td select');
+    var texts   = tr.querySelectorAll('td.input-td input.date-inp');
+    snap.push({
+      checked: !!(cb && cb.checked),
+      s0: selects[0] ? selects[0].value : '',
+      s1: selects[1] ? selects[1].value : '',
+      s2: selects[2] ? selects[2].value : '',
+      t0: texts[0] ? texts[0].value : '',
+      t1: texts[1] ? texts[1].value : ''
+    });
+  });
+  return snap;
+}
+
+/* 스냅샷으로 표 입력값/체크상태를 복구한다. */
+function restoreRows(snap) {
+  document.querySelectorAll('#listBody tr').forEach(function(tr, i) {
+    var s = snap[i]; if (!s) return;
+    var cb = tr.querySelector('input[type="checkbox"]');
+    var selects = tr.querySelectorAll('td.input-td select');
+    var texts   = tr.querySelectorAll('td.input-td input.date-inp');
+    if (cb && cb.checked !== s.checked) { cb.checked = s.checked; toggleRow(cb); }
+    if (selects[0]) selects[0].value = s.s0;
+    if (selects[1]) selects[1].value = s.s1;
+    if (selects[2]) selects[2].value = s.s2;
+    if (texts[0]) { texts[0].value = s.t0; texts[0].classList.toggle('has-val', !!s.t0); }
+    if (texts[1]) { texts[1].value = s.t1; texts[1].classList.toggle('has-val', !!s.t1); }
+  });
+  updateCounts();
+}
+
+/* 변경(적용/지우기) 직전에 호출 → 되돌리기 1칸 저장 + 버튼 활성화. */
+function saveUndo() {
+  _undoSnapshot = snapshotRows();
+  var b = document.getElementById('undoBtn'); if (b) b.disabled = false;
+}
+
+/* 되돌리기: 직전 스냅샷으로 복구(1단계). 복구 후 비활성화. */
+function undoLast() {
+  if (!_undoSnapshot) return;
+  restoreRows(_undoSnapshot);
+  _undoSnapshot = null;
+  var b = document.getElementById('undoBtn'); if (b) b.disabled = true;
+  showToast('직전 상태로 되돌렸습니다.');
+}
+
+/* 리스트를 새로 그리면 되돌리기 이력은 무효 → 초기화. */
+function resetUndo() {
+  _undoSnapshot = null;
+  var b = document.getElementById('undoBtn'); if (b) b.disabled = true;
+}
+
+/* 토스트: 간단 알림(+선택적으로 [동작] 버튼). 4초 후 자동 사라짐. */
+var _toastTimer = null;
+function showToast(msg, actionLabel, actionFn) {
+  var t = document.getElementById('toast');
+  var m = document.getElementById('toastMsg');
+  var a = document.getElementById('toastAction');
+  if (!t) return;
+  m.textContent = msg;
+  if (actionLabel && actionFn) {
+    a.textContent = actionLabel; a.style.display = '';
+    a.onclick = function() { hideToast(); actionFn(); };
+  } else {
+    a.style.display = 'none'; a.onclick = null;
+  }
+  t.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(hideToast, 4000);
+}
+function hideToast() {
+  var t = document.getElementById('toast'); if (t) t.classList.remove('show');
+}
+
+/* 확인 모달(Promise). ok=true/false 로 resolve. */
+var _confirmResolve = null;
+function askConfirm(html) {
+  return new Promise(function(resolve) {
+    _confirmResolve = resolve;
+    document.getElementById('confirmBody').innerHTML = html;
+    document.getElementById('confirmModal').classList.add('open');
+  });
+}
+function closeConfirm(ok) {
+  document.getElementById('confirmModal').classList.remove('open');
+  if (_confirmResolve) { _confirmResolve(ok); _confirmResolve = null; }
+}
+
 function applyBulk(applyAll) {
+  var rows = document.querySelectorAll('#listBody tr');
+  if (rows.length === 0) { showToast('적용할 리스트가 없습니다.'); return; }
+
+  if (!applyAll) {
+    /* 선택 적용: 체크된 행이 없으면 안내 후 중단 */
+    var sel = document.querySelectorAll('#listBody input[type="checkbox"]:checked').length;
+    if (sel === 0) { showToast('선택된 행이 없습니다.'); return; }
+    doApplyBulk(false);
+    return;
+  }
+  /* 전체 적용: 선택 여부와 무관하게 전체 적용 → 확인창 */
+  askConfirm('현재 표시된 <b>' + rows.length + '건 전체</b>에 일괄 적용됩니다.' +
+             '<br><span style="color:#8a93a8;">(선택 여부와 무관)</span><br><br>계속할까요?')
+    .then(function(ok) { if (ok) doApplyBulk(true); });
+}
+
+function doApplyBulk(applyAll) {
+  saveUndo();   /* 되돌리기용 직전 상태 저장 */
   var val_굴착  = document.getElementById('bulk-굴착').value;
   var val_허가청 = document.getElementById('bulk-허가청').value;
   var val_업체  = document.getElementById('bulk-업체').value;
   var val_시작  = document.getElementById('bulk-시작').value;
   var val_종료  = document.getElementById('bulk-종료').value;
 
+  var n = 0;
   document.querySelectorAll('#listBody tr').forEach(function(tr) {
     var cb = tr.querySelector('input[type="checkbox"]');
     if (!applyAll && (!cb || !cb.checked)) return;
@@ -964,7 +1119,26 @@ function applyBulk(applyAll) {
     if (val_업체  && selects[2]) selects[2].value = val_업체;
     if (val_시작  && texts[0]) { texts[0].value = val_시작; texts[0].classList.add('has-val'); }
     if (val_종료  && texts[1]) { texts[1].value = val_종료; texts[1].classList.add('has-val'); }
+    n++;
   });
+  showToast((applyAll ? '전체 ' : '선택 ') + n + '건 적용됨', '되돌리기', undoLast);
+}
+
+/* 선택행 입력정보 지우기: 체크된 행의 입력값(굴착/허가청/업체/기간)만 비운다. */
+function clearSelectedInputs() {
+  var checked = document.querySelectorAll('#listBody input[type="checkbox"]:checked');
+  if (checked.length === 0) { showToast('선택된 행이 없습니다.'); return; }
+  saveUndo();
+  var n = 0;
+  checked.forEach(function(cb) {
+    var tr = cb.closest('tr'); if (!tr) return;
+    tr.querySelectorAll('td.input-td select').forEach(function(s) { s.value = ''; });
+    tr.querySelectorAll('td.input-td input.date-inp').forEach(function(t) {
+      t.value = ''; t.classList.remove('has-val');
+    });
+    n++;
+  });
+  showToast('선택 ' + n + '건의 입력정보를 지웠습니다', '되돌리기', undoLast);
 }
 
 /* ─────────────── 의뢰공사 목록 표 렌더링 ─────────────── */
@@ -1032,6 +1206,7 @@ function renderRows(rows) {
     tbody.appendChild(tr);
   });
   updateCounts();
+  resetUndo();   /* 새 리스트 → 되돌리기 이력 무효 */
 }
 
 /* SAP 조회 결과(열목록+행)를 우리 표 필드로 매핑한다(열 제목 기반 best-effort). */
