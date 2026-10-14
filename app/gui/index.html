@@ -900,11 +900,11 @@ tbody tr:nth-child(even):hover td.input-td {
           <tr>
             <th style="width:64px;">상태</th>
             <th style="width:98px;">구간코드</th>
+            <th style="width:96px;">공사번호</th>
             <th>구간명</th>
             <th style="width:150px;">인식된 동(코드)</th>
             <th style="width:112px;">재질/연장</th>
             <th style="width:88px;">시공업체</th>
-            <th style="width:96px;">공사번호</th>
             <th style="width:230px;">비고(사유)</th>
           </tr>
         </thead>
@@ -1718,11 +1718,11 @@ function showReport(res) {
     st.innerHTML = '<span class="badge ' + s + '">' + (LABEL[s] || s) + '</span>';
     tr.appendChild(st);
     tr.appendChild(cell(r.cmp));
+    tr.appendChild(cell(r.gongsa_no || '—'));
     tr.appendChild(cell(r.name));
     tr.appendChild(cell(r.dong || '—'));
     tr.appendChild(cell(r.material || '—'));
     tr.appendChild(cell(r.vendor || '—'));
-    tr.appendChild(cell(r.gongsa_no || '—'));
     tr.appendChild(cell(r.reason || '', 'r-reason'));
     body.appendChild(tr);
   });
