@@ -146,6 +146,9 @@ class Api:
         # 시작 단계 타이밍을 화면 로그(처리 로그 창)에도 몰아서 보여준다(파일 안 열어도 됨).
         for s in _LAPS:
             self._js("addLog", s, "info")
+        # 좌/우 하단 버전 표시(단일 출처: settings.json)
+        if self.cfg:
+            self._js("setAppVersion", self.cfg.app_version, self.cfg.app_version_date)
         return True
 
     # ── 단가표 ─────────────────────────────────────────────

@@ -65,6 +65,12 @@ body {
   vertical-align: super;
   margin-left: 6px;
 }
+.app-version {
+  font-family: 'Nanum Gothic', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #aeb6c7;
+}
 .sap-badge {
   background: #009BDE;
   color: #fff;
@@ -354,6 +360,7 @@ td input[readonly] {
   justify-content: space-between;
 }
 .bot-stat { font-size: 12px; color: #aaa; }
+.bot-right { display: flex; align-items: center; gap: 16px; }
 .test-lbl {
   display: flex;
   align-items: center;
@@ -822,10 +829,13 @@ tbody tr:nth-child(even):hover td.input-td {
 
   <div class="bot">
     <span class="bot-stat" id="filterStat"></span>
-    <label class="test-lbl">
-      <input type="checkbox" id="chkSkipTsrm" style="width:13px;height:13px;">
-      TSRM 전송 건너뜀
-    </label>
+    <div class="bot-right">
+      <label class="test-lbl">
+        <input type="checkbox" id="chkSkipTsrm" style="width:13px;height:13px;">
+        TSRM 전송 건너뜀
+      </label>
+      <span class="app-version" id="appVersion">v.1.0.1 · 2026-10-19</span>
+    </div>
   </div>
 
 </div>
@@ -922,12 +932,12 @@ tbody tr:nth-child(even):hover td.input-td {
 
 <!-- 전체 적용 확인 모달 -->
 <div class="modal-overlay" id="confirmModal">
-  <div class="modal" style="width:420px;">
+  <div class="modal" style="width:470px;">
     <div class="modal-head">
       <div class="modal-title">⚠️ 전체 적용 확인</div>
       <button class="modal-close" onclick="closeConfirm(false)">✕</button>
     </div>
-    <div class="modal-body" id="confirmBody" style="padding:22px 24px; font-size:13px; color:#212842; line-height:1.7;"></div>
+    <div class="modal-body" id="confirmBody" style="display:block; padding:26px 28px; text-align:center;"></div>
     <div class="modal-foot" style="justify-content:flex-end; gap:8px;">
       <button class="btn-out" onclick="closeConfirm(false)">취소</button>
       <button class="btn-main" onclick="closeConfirm(true)">전체 적용</button>
@@ -1067,6 +1077,16 @@ function hideToast() {
   var t = document.getElementById('toast'); if (t) t.classList.remove('show');
 }
 
+/* 좌/우 하단 버전 표시를 settings.json 값으로 갱신(파이썬 gui_ready 에서 호출). */
+function setAppVersion(ver, date) {
+  var el = document.getElementById('appVersion');
+  if (!el) return;
+  var parts = [];
+  if (ver) parts.push(ver);
+  if (date) parts.push(date);
+  el.textContent = parts.join(' · ');
+}
+
 /* 확인 모달(Promise). ok=true/false 로 resolve. */
 var _confirmResolve = null;
 function askConfirm(html) {
@@ -1093,8 +1113,12 @@ function applyBulk(applyAll) {
     return;
   }
   /* 전체 적용: 선택 여부와 무관하게 전체 적용 → 확인창 */
-  askConfirm('현재 표시된 <b>' + rows.length + '건 전체</b>에 일괄 적용됩니다.' +
-             '<br><span style="color:#8a93a8;">(선택 여부와 무관)</span><br><br>계속할까요?')
+  askConfirm('<div style="font-size:14.5px; font-weight:600; color:#212842; white-space:nowrap;">' +
+               '현재 표시된 <span style="color:#1E9BF0;">전체 ' + rows.length + '건</span>에 일괄 적용합니다.' +
+             '</div>' +
+             '<div style="margin-top:12px; font-size:12px; color:#8a93a8; line-height:1.5;">' +
+               '선택 여부와 관계없이 모든 행이 덮어쓰기됩니다.' +
+             '</div>')
     .then(function(ok) { if (ok) doApplyBulk(true); });
 }
 

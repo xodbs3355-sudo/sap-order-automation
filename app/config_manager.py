@@ -78,6 +78,16 @@ class ConfigManager:
         """테스트 서버 모드 여부 (True 면 ZREC0208 의 TSRM 전송 건너뜀)."""
         return bool(self.data.get("test_server_mode", False))
 
+    @property
+    def app_version(self):
+        """프로그램 버전 문자열 (예: 'v.1.0.1'). 화면 좌/우 하단 표시용."""
+        return str(self.data.get("version", ""))
+
+    @property
+    def app_version_date(self):
+        """프로그램 버전(배포) 날짜 (예: '2026-10-19')."""
+        return str(self.data.get("version_date", ""))
+
     # ── 목록(드롭다운용) ───────────────────────────────────────
     def permit_offices(self):
         """허가청 목록. code·name 이 모두 채워진 항목만 반환."""
