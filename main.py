@@ -119,7 +119,7 @@ class Api:
             self.cfg = None
             self.config_error = str(e)
         # pywebview 창(화면에 로그/진행상태를 밀어넣기 위한 통로). main() 에서 연결.
-        self.window = None
+        self._window = None
 
     # ── 화면 호출(파이썬 → JS) ─────────────────────────────
     def _js(self, fn, *args):
@@ -128,11 +128,11 @@ class Api:
         예: self._js("runStep", 2, "done") → 화면에서 runStep(2,"done") 실행.
         창이 아직 없거나 실패해도 조용히 무시(로직은 계속).
         """
-        if not self.window:
+        if not self._window:
             return
         try:
             payload = ", ".join(json.dumps(a, ensure_ascii=False) for a in args)
-            self.window.evaluate_js("%s(%s)" % (fn, payload))
+            self._window.evaluate_js("%s(%s)" % (fn, payload))
         except Exception:
             pass
 
@@ -462,7 +462,7 @@ def main() -> None:
         resizable=True,
     )
     # 화면 연결: 파이썬 로그를 처리 로그 창에도 실시간으로 찍는다.
-    api.window = window
+    api._window = window
     applog.set_gui_emit(lambda m, l: api._js("addLog", m, l))
     _lap("창 생성 완료 (이후 WebView 부팅+화면 렌더)")
     webview.start()
