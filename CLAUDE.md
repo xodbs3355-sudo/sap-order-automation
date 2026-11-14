@@ -42,6 +42,8 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
 - app/sap/connector.py: SAP 세션 연결 관리
 - app/sap/zrec000X.py: T-code별 자동화 함수
 - app/gui/index.html: 확정된 GUI (목업에서 가져온 파일)
+- app/gui/splash.py: 시작 대기창(스켈레톤). main.py 가 별도 프로세스로 먼저 띄우고, 본 화면 준비(gui_ready) 시 닫음
+  (자원: app/gui/assets/splash_logo.png, app/gui/assets/fonts/splash_*.ttf)
 - app/gui/assets/fonts/: 로컬 폰트 파일 보관 폴더 (Gmarket Sans Bold, Nanum Gothic)
 - app/config/settings.json: 허가청·업체·단가표 설정값
 - app/docs/CHANGELOG.md: 버전별 변경 이력 (최신순)

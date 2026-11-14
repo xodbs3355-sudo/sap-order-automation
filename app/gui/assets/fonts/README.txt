@@ -12,3 +12,19 @@
       --flavor=woff2 --output-file=<이름.woff2>
 
 ※ Google Fonts @import 방식은 사용하지 않습니다 (로컬 @font-face 방식만 사용).
+
+────────────────────────────────────────
+시작 대기창(app/gui/splash.py) 전용 글꼴 (TTF · 대기창 글자만 포함)
+- splash_GmarketSansBold.ttf  (제목 "공사 발주 자동화 프로그램")
+- splash_NanumGothic.ttf      (안내 문구 + 숫자 0~9 + "초" "·")
+
+※ 대기창은 tkinter 로 그리는데, tkinter 는 woff2 를 못 읽어 TTF 가 따로 필요합니다.
+  대기창이 뜰 때 이 프로그램 안에서만 잠깐 등록해 씁니다(Windows 에 설치되지 않음).
+  등록이 안 되면 맑은 고딕 → 기본 글꼴로 대신 표시됩니다.
+※ splash.py 의 문구(TITLE/MSG/SUB)를 바꾸면 아래처럼 다시 만들어야 합니다 (fonttools 필요).
+    pyftsubset GmarketSansBold.woff2 --text="공사 발주 자동화 프로그램" \
+      --flavor= --output-file=splash_GmarketSansBold.ttf
+    pyftsubset NanumGothic.woff2 \
+      --text="화면을 준비하고 있습니다처음 실행은 시간이 조금 걸립니다·0123456789초 " \
+      --flavor= --output-file=splash_NanumGothic.ttf
+  (--flavor= 는 "woff2 아닌 일반 TTF 로 저장" 이라는 뜻 — 빠뜨리면 Windows 가 못 읽음)

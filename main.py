@@ -13,6 +13,7 @@ import time
 
 # 시작 시각(성능 계측용). 프로세스 시작 직후 기록해, 각 단계까지 걸린 시간을 잰다.
 _START = time.perf_counter()
+_START_EPOCH = time.time()   # 대기창(별도 프로세스)이 알려주는 시각과 비교하기 위한 기준
 
 # 폴더 정리: 실행 파일(main.py)만 루트에 두고, 나머지 코드·자원은 app/ 폴더에 있다.
 # app/ 을 파이썬 모듈 검색 경로에 추가해, 아래 import(config_manager·sap·applog)를
@@ -20,6 +21,58 @@ _START = time.perf_counter()
 _APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
+
+
+def _launch_splash():
+    """시작 대기창(app/gui/splash.py)을 별도 프로세스로 즉시 띄운다.
+
+    무거운 import(webview 등)보다 먼저 실행해야 효과가 있으므로 파일 맨 앞에서 부른다.
+    대기창은 stdin 연결이 끊기면 닫힌다 → _close_splash() 가 연결을 닫는다.
+    (이 프로그램이 오류로 꺼져도 운영체제가 연결을 끊어 대기창이 같이 닫힘)
+    실패해도 본 프로그램은 그대로 진행(보조 기능).
+    """
+    try:
+        import subprocess
+        script = os.path.join(_APP_DIR, "gui", "splash.py")
+        exe, flags = sys.executable, 0
+        if os.name == "nt":
+            # 콘솔 창이 하나 더 뜨지 않게: pythonw.exe 우선, 없으면 '창 없이 실행' 옵션
+            pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+            if os.path.exists(pyw):
+                exe = pyw
+            else:
+                flags = 0x08000000  # CREATE_NO_WINDOW
+        return subprocess.Popen([exe, script], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+                                creationflags=flags)
+    except Exception:
+        return None
+
+
+def _python_boot_seconds():
+    """실행(프로세스 생성) → main.py 첫 줄까지 걸린 시간(초). Windows 전용, 실패 시 None.
+
+    파이썬 자체가 켜지는 시간은 _START 이전이라 그동안 로그에 안 잡혔다.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        ft = [wintypes.FILETIME() for _ in range(4)]
+        if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(f) for f in ft]):
+            return None
+        created = ((ft[0].dwHighDateTime << 32) | ft[0].dwLowDateTime)
+        created_epoch = (created - 116444736000000000) / 1e7   # 1601년 기준 → 1970년 기준
+        return _START_EPOCH - created_epoch
+    except Exception:
+        return None
+
+
+# 직접 실행할 때만 대기창을 띄운다(다른 파일이 import 할 땐 띄우지 않음).
+_SPLASH = _launch_splash() if __name__ == "__main__" else None
 
 import json
 
@@ -91,11 +144,114 @@ def _short_name(name):
 _LAPS = []
 
 
-def _lap(label):
-    """시작 단계별 경과시간을 기록(파일 로그) + 화면용으로 저장."""
-    s = "⏱ %s · +%.2f초" % (label, time.perf_counter() - _START)
+def _lap(label, at=None):
+    """시작 단계별 경과시간을 기록(파일 로그) + 화면용으로 저장.
+
+    at: 직접 계산한 경과초(대기창처럼 다른 프로세스에서 온 시각용). 없으면 지금 시각.
+    """
+    sec = (time.perf_counter() - _START) if at is None else at
+    s = "⏱ %s · +%.2f초" % (label, sec)
     _LAPS.append(s)
     applog.info(s)
+
+
+import threading as _threading
+
+_SPLASH_LOCK = _threading.Lock()   # 대기창으로 보내기/닫기가 동시에 일어나지 않게
+_SPLASH_RECT0 = []                 # 대기창이 처음 뜬 자리(계산값) — 실제와의 차이 로그용
+
+
+def _watch_splash():
+    """대기창이 알려주는 줄(SHOWN 시각 / 처음 위치 / 사용 글꼴)을 읽어 시작 로그에 남긴다."""
+    if not _SPLASH or not _SPLASH.stdout:
+        return
+
+    def _read():
+        try:
+            for ln in _SPLASH.stdout:
+                ln = ln.strip()
+                if ln.startswith("SHOWN "):
+                    _lap("대기창 표시", float(ln[6:]) - _START_EPOCH)
+                elif ln.startswith("RECT0 "):
+                    _SPLASH_RECT0[:] = [int(v) for v in ln.split()[1:5]]
+                elif ln.startswith("FONT "):
+                    applog.info("대기창 글꼴(제목 | 본문 | 배율): %s" % ln[5:])
+        except Exception:
+            pass
+
+    _threading.Thread(target=_read, daemon=True).start()
+
+
+def _splash_send(line):
+    """대기창에 명령 한 줄을 보낸다. 이미 닫혔으면 아무것도 안 함. 성공 여부 반환."""
+    with _SPLASH_LOCK:
+        try:
+            if _SPLASH and _SPLASH.stdin and not _SPLASH.stdin.closed:
+                _SPLASH.stdin.write(line + "\n")
+                _SPLASH.stdin.flush()
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _close_splash():
+    """대기창을 닫는다(stdin 연결을 끊으면 대기창이 스스로 닫힘). 여러 번 불러도 안전."""
+    with _SPLASH_LOCK:
+        try:
+            if _SPLASH and _SPLASH.stdin and not _SPLASH.stdin.closed:
+                _SPLASH.stdin.close()
+        except Exception:
+            pass
+
+
+def _main_client_rect(title):
+    """본 창 '내용 영역'(제목줄·테두리 제외)의 화면 좌표 (x, y, w, h). Windows 전용, 실패 시 None.
+
+    본 창은 건드리지 않고 위치만 '읽기'만 한다.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        u.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+        u.FindWindowW.restype = wintypes.HWND
+        hwnd = u.FindWindowW(None, title)
+        if not hwnd:
+            return None
+        pid = wintypes.DWORD()
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value != os.getpid():      # 같은 이름의 다른 프로그램 창이면 무시
+            return None
+        rc = wintypes.RECT()
+        pt = wintypes.POINT(0, 0)
+        if not u.GetClientRect(hwnd, ctypes.byref(rc)) or not u.ClientToScreen(hwnd, ctypes.byref(pt)):
+            return None
+        return pt.x, pt.y, rc.right - rc.left, rc.bottom - rc.top
+    except Exception:
+        return None
+
+
+def _align_splash_once(title):
+    """본 창 틀이 뜬 직후 딱 한 번: 대기창을 본 창 내용 영역 자리로 옮긴다.
+
+    창 찾기가 바로 안 될 수 있어 최대 5번(0.2초 간격)까지만 다시 시도하고, 성공하면 끝.
+    """
+    for _ in range(5):
+        r = _main_client_rect(title)
+        if r and r[2] > 200 and r[3] > 200:
+            if _splash_send("RECT %d %d %d %d" % r):
+                if len(_SPLASH_RECT0) == 4:
+                    d = [r[i] - _SPLASH_RECT0[i] for i in range(4)]
+                    applog.info("대기창 위치 맞춤 · 본 창 내용영역 %s · 처음 계산 대비 차이 "
+                                "x%+d y%+d 폭%+d 높이%+d" % (r, d[0], d[1], d[2], d[3]))
+                else:
+                    applog.info("대기창 위치 맞춤 · 본 창 내용영역 %s" % (r,))
+            return
+        time.sleep(0.2)
+    applog.warn("대기창 위치 맞춤 실패(본 창 좌표를 못 읽음) — 처음 위치 유지")
 
 
 def get_gui_path() -> str:
@@ -149,6 +305,8 @@ class Api:
         # 좌/우 하단 버전 표시(단일 출처: settings.json)
         if self.cfg:
             self._js("setAppVersion", self.cfg.app_version, self.cfg.app_version_date)
+        # 본 화면이 다 그려졌으니 시작 대기창을 닫는다.
+        _close_splash()
         return True
 
     # ── 단가표 ─────────────────────────────────────────────
@@ -445,6 +603,15 @@ def main() -> None:
     os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
                           "--disable-gpu --disable-gpu-compositing")
     applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
+    # 아래 '+초' 들의 기준(0초) = main.py 첫 줄. 그 이전(파이썬이 켜지는 시간)은 따로 기록.
+    boot = _python_boot_seconds()
+    if boot is not None:
+        s = "⏱ 파이썬 켜지는 시간(실행 → main.py 첫 줄) · %.2f초" % boot
+        _LAPS.append(s)
+        applog.info(s)
+    _watch_splash()
+    if _SPLASH is None:
+        applog.warn("시작 대기창을 띄우지 못함(본 프로그램은 정상 진행)")
     _lap("모듈 로드 완료")
     api = Api()
     _lap("설정 로드 완료")
@@ -465,7 +632,28 @@ def main() -> None:
     api._window = window
     applog.set_gui_emit(lambda m, l: api._js("addLog", m, l))
     _lap("창 생성 완료 (이후 WebView 부팅+화면 렌더)")
-    webview.start()
+
+    # 어느 구간이 느린지 보기 위한 계측: 본 창 틀이 뜬 시각 / 화면(HTML) 로딩이 끝난 시각
+    def _on_shown():
+        _lap("본 창 표시(창 틀)")
+        if _SPLASH is not None:
+            _align_splash_once(window.title)
+
+    def _on_loaded():
+        _lap("화면(HTML) 로딩 완료")
+        # 안전장치: 화면 쪽 오류로 gui_ready 가 안 오더라도 대기창이 본 창을 계속
+        # 가리지 않게, 로딩 완료 8초 뒤에는 대기창을 닫는다.
+        import threading
+        t = threading.Timer(8.0, _close_splash)
+        t.daemon = True   # 프로그램 종료를 붙잡지 않게
+        t.start()
+
+    window.events.shown += _on_shown
+    window.events.loaded += _on_loaded
+    try:
+        webview.start()
+    finally:
+        _close_splash()   # 창을 닫거나 오류로 끝나도 대기창이 남지 않게
 
 
 if __name__ == "__main__":
