@@ -50,25 +50,29 @@ def _launch_splash():
 
 
 def _python_boot_seconds():
-    """실행(프로세스 생성) → main.py 첫 줄까지 걸린 시간(초). Windows 전용, 실패 시 None.
+    """실행(python.exe 프로세스 생성) → main.py 첫 줄까지 걸린 시간(초). Windows 전용.
 
     파이썬 자체가 켜지는 시간은 _START 이전이라 그동안 로그에 안 잡혔다.
+    반환: 초(float). Windows 가 아니면 None. 측정 실패 시 예외(사유를 로그에 남기기 위해).
+    ※ py.exe(런처)로 실행하면 런처가 python.exe 를 띄우기 전 시간은 포함되지 않는다.
     """
     if os.name != "nt":
         return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-        k32 = ctypes.windll.kernel32
-        k32.GetCurrentProcess.restype = wintypes.HANDLE
-        ft = [wintypes.FILETIME() for _ in range(4)]
-        if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(f) for f in ft]):
-            return None
-        created = ((ft[0].dwHighDateTime << 32) | ft[0].dwLowDateTime)
-        created_epoch = (created - 116444736000000000) / 1e7   # 1601년 기준 → 1970년 기준
-        return _START_EPOCH - created_epoch
-    except Exception:
-        return None
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.windll.kernel32
+    # 값 형식 지정(argtypes/restype). 지정하지 않으면 GetCurrentProcess 가 돌려주는
+    # 특수 핸들(-1)을 넘길 때 형식 변환 오류가 나서 측정이 조용히 실패했었다.
+    k32.GetCurrentProcess.argtypes = []
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    k32.GetProcessTimes.restype = wintypes.BOOL
+    ft = [wintypes.FILETIME() for _ in range(4)]
+    if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(f) for f in ft]):
+        raise OSError("GetProcessTimes 실패 (오류코드 %d)" % ctypes.GetLastError())
+    created = (ft[0].dwHighDateTime << 32) | ft[0].dwLowDateTime
+    created_epoch = (created - 116444736000000000) / 1e7   # 1601년 기준 → 1970년 기준
+    return _START_EPOCH - created_epoch
 
 
 # 직접 실행할 때만 대기창을 띄운다(다른 파일이 import 할 땐 띄우지 않음).
@@ -205,6 +209,35 @@ def _close_splash():
             pass
 
 
+def _center_position(width, height):
+    """본 창을 열 위치(왼쪽 위, 논리 픽셀) — 작업 영역(작업표시줄 제외) 정중앙. Windows 전용.
+
+    대기창(splash.py)도 같은 방식으로 중앙을 계산하므로, 처음부터 같은 자리에 겹친다.
+    위치를 정하지 않으면 Windows 가 실행할 때마다 창을 계단식으로 옮겨 열었다(실측).
+    pywebview 는 이 값에 화면 배율을 곱해 실제 위치로 쓴다. 실패 시 None(기존 동작).
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        wa = wintypes.RECT()
+        if not u.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0):   # SPI_GETWORKAREA
+            return None
+        left, top = wa.left, wa.top
+        ww, wh = wa.right - wa.left, wa.bottom - wa.top
+        # 이미 배율 인식(DPI aware) 상태면 값이 실제 픽셀 → 논리 픽셀로 환산
+        if u.IsProcessDPIAware():
+            scale = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0 or 1.0
+            left, top, ww, wh = left / scale, top / scale, ww / scale, wh / scale
+        x = max(left, left + (ww - width) / 2)
+        y = max(top, top + (wh - height) / 2)
+        return int(x), int(y)
+    except Exception:
+        return None
+
+
 def _main_client_rect(title):
     """본 창 '내용 영역'(제목줄·테두리 제외)의 화면 좌표 (x, y, w, h). Windows 전용, 실패 시 None.
 
@@ -276,6 +309,8 @@ class Api:
             self.config_error = str(e)
         # pywebview 창(화면에 로그/진행상태를 밀어넣기 위한 통로). main() 에서 연결.
         self._window = None
+        # 화면(JS)이 준비됐는지(gui_ready 호출됨). 준비 전엔 화면으로 보내지 않는다 — 아래 _js 참고.
+        self._ready = False
 
     # ── 화면 호출(파이썬 → JS) ─────────────────────────────
     def _js(self, fn, *args):
@@ -283,8 +318,13 @@ class Api:
 
         예: self._js("runStep", 2, "done") → 화면에서 runStep(2,"done") 실행.
         창이 아직 없거나 실패해도 조용히 무시(로직은 계속).
+
+        화면 준비(gui_ready) 전에는 보내지 않는다. pywebview 의 evaluate_js 는 화면이
+        준비될 때까지 최대 20초 '멈춰서 기다리는' 함수라, 시작 중에 부르면 그만큼
+        프로그램 시작이 늦어진다(실측: 매 실행 약 20초 지연). 준비 전 로그는 파일에 남고,
+        시작 시간 기록(_LAPS)은 gui_ready 에서 한꺼번에 화면에 보여준다.
         """
-        if not self._window:
+        if not self._window or not self._ready:
             return
         try:
             payload = ", ".join(json.dumps(a, ensure_ascii=False) for a in args)
@@ -298,6 +338,7 @@ class Api:
         시작부터 실제 화면 표시까지 걸린 시간을 로그에 남긴다.
         '창 생성 완료' 로그와 이 값의 차이 = WebView(브라우저) 부팅+렌더 시간.
         """
+        self._ready = True   # 이제부터 화면 로그 창으로 보내도 기다림 없음
         applog.success("⏱ 화면 표시 완료 · 시작~렌더 %.2f초" % (time.perf_counter() - _START))
         # 시작 단계 타이밍을 화면 로그(처리 로그 창)에도 몰아서 보여준다(파일 안 열어도 됨).
         for s in _LAPS:
@@ -604,21 +645,28 @@ def main() -> None:
                           "--disable-gpu --disable-gpu-compositing")
     applog.info("프로그램 시작 · 로그 파일: %s" % applog.log_file_path())
     # 아래 '+초' 들의 기준(0초) = main.py 첫 줄. 그 이전(파이썬이 켜지는 시간)은 따로 기록.
-    boot = _python_boot_seconds()
-    if boot is not None:
-        s = "⏱ 파이썬 켜지는 시간(실행 → main.py 첫 줄) · %.2f초" % boot
-        _LAPS.append(s)
-        applog.info(s)
+    try:
+        boot = _python_boot_seconds()
+        if boot is not None:
+            s = "⏱ 파이썬 켜지는 시간(실행 → main.py 첫 줄) · %.2f초" % boot
+            _LAPS.append(s)
+            applog.info(s)
+    except Exception as e:
+        applog.warn("파이썬 켜지는 시간 측정 실패: %s" % e)
     _watch_splash()
     if _SPLASH is None:
         applog.warn("시작 대기창을 띄우지 못함(본 프로그램은 정상 진행)")
     _lap("모듈 로드 완료")
     api = Api()
     _lap("설정 로드 완료")
+    # 본 창을 화면 정중앙에 연다(대기창과 같은 자리). 계산 실패 시 x/y 없이 기존처럼.
+    pos = _center_position(1560, 850)
+    pos_kw = {"x": pos[0], "y": pos[1]} if pos else {}
     window = webview.create_window(
         title="SAP Work Order Automation",
         url=get_gui_path(),
         js_api=api,
+        **pos_kw,
         width=1560,
         height=850,
         # 스크롤이 안 생기는 크기로 연다(측정 기준).

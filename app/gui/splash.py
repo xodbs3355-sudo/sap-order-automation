@@ -133,8 +133,9 @@ def _estimate_client_rect(root, scale):
             u = ctypes.windll.user32
             wa = wintypes.RECT()
             u.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)   # 작업 영역(작업표시줄 제외)
-            ox = wa.left + (wa.right - wa.left - ow) // 2
-            oy = wa.top + (wa.bottom - wa.top - oh) // 2
+            # main.py _center_position 과 같은 규칙(작업 영역 중앙, 넘치면 왼쪽 위에 붙임)
+            ox = max(wa.left, wa.left + (wa.right - wa.left - ow) // 2)
+            oy = max(wa.top, wa.top + (wa.bottom - wa.top - oh) // 2)
             # 테두리·제목줄 두께 (SM_CXSIZEFRAME=32, SM_CYSIZEFRAME=33, SM_CXPADDEDBORDER=92,
             #                     SM_CYCAPTION=4)
             bx = u.GetSystemMetrics(32) + u.GetSystemMetrics(92)
