@@ -1,0 +1,8 @@
+# 설치 파일(.exe) 빌드 전용 — GitHub Actions(windows-latest)에서만 사용.
+# 빌드할 때마다 같은 결과가 나오도록 버전을 고정한다(2026-11-18 PyPI 기준 최신).
+# ※ 파이썬으로 직접 실행할 때 쓰는 app/requirements.txt 와는 별개(그 파일은 그대로).
+pywebview==6.2.1
+pythonnet==3.2.1
+pywin32==312
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10

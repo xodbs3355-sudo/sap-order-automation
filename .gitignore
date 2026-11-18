@@ -14,3 +14,10 @@ env/
 .DS_Store
 Thumbs.db
 *.bak
+
+# 설치 파일 빌드 산출물 (GitHub Actions 에서만 생성)
+/build/
+/dist/
+/installer_output/
+/selftest_dir/
+*.spec

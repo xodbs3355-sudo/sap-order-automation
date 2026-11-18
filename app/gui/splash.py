@@ -39,9 +39,29 @@ import time
 WIN_W, WIN_H = 1560, 850   # main.py create_window 의 창 크기(제목줄·테두리 포함 바깥 크기)
 MAX_SECONDS = 180          # 안전장치: 이 시간이 지나면 스스로 닫힘
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_FONT_DIR = os.path.join(_HERE, "assets", "fonts")
-_LOGO = os.path.join(_HERE, "assets", "splash_logo.png")
+# 경로: paths.py(프로그램 루트 기준, 파이썬·exe 공통)를 쓴다.
+# 파이썬으로 이 파일을 직접 실행할 때는 app/ 이 검색 경로에 없으므로 추가한다.
+_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
+import paths  # noqa: E402
+
+_FONT_DIR = os.path.join(paths.GUI_DIR, "assets", "fonts")
+_LOGO = os.path.join(paths.GUI_DIR, "assets", "splash_logo.png")
+
+
+def _std_stream(name, fd, mode):
+    """sys.stdin/stdout 반환. 콘솔 없는 exe 에서 None 이면 물려받은 통로(fd)를 직접 연다.
+
+    (main.py 가 연결해 준 통로가 있어야 '닫아라' 신호와 시간 알림이 오간다)
+    """
+    s = getattr(sys, name, None)
+    if s is not None:
+        return s
+    try:
+        return open(fd, mode, encoding="utf-8", closefd=False, buffering=1 if "w" in mode else -1)
+    except Exception:
+        return None
 
 # (TTF 파일, 글꼴 이름) — 이름은 TTF 내부 이름표(name ID 1)와 같아야 한다.
 _FONT_TITLE = ("splash_GmarketSansBold.ttf", "Gmarket Sans TTF Bold")
@@ -339,15 +359,25 @@ class Splash:
         self.c.itemconfigure(self.sub, text=SUB % int(t))
 
 
+_OUT = None   # main.py 로 보내는 통로(표준출력) — main() 에서 정함
+
+
 def _say(msg):
     """main.py 로 한 줄 알림(로그용). 실패해도 대기창은 계속."""
     try:
-        print(msg, flush=True)
+        if _OUT is not None:
+            _OUT.write(msg + "\n")
+            _OUT.flush()
     except Exception:
         pass
 
 
 def main():
+    global _OUT
+    _OUT = _std_stream("stdout", 1, "w")
+    cmd_in = _std_stream("stdin", 0, "r")
+    # 닫힘 신호 통로(stdin)를 못 얻으면, 본 창을 오래 가리지 않도록 최대 시간을 짧게
+    max_seconds = MAX_SECONDS if cmd_in is not None else 15
     scale = _set_dpi_aware()
     _register_private_fonts()
 
@@ -371,13 +401,13 @@ def main():
 
     def watch_stdin():
         try:
-            for ln in sys.stdin:
+            for ln in cmd_in:
                 cmds.put(ln.strip())
         except Exception:
             pass
         cmds.put("CLOSE")
 
-    if sys.stdin is not None:
+    if cmd_in is not None:
         threading.Thread(target=watch_stdin, daemon=True).start()
 
     def tick():
@@ -396,7 +426,7 @@ def main():
                         pass
         except queue.Empty:
             pass
-        if time.perf_counter() - sp.t0 > MAX_SECONDS:
+        if time.perf_counter() - sp.t0 > max_seconds:
             root.destroy()
             return
         sp.animate()

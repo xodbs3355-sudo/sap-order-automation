@@ -17,10 +17,51 @@ _START_EPOCH = time.time()   # 대기창(별도 프로세스)이 알려주는 �
 
 # 폴더 정리: 실행 파일(main.py)만 루트에 두고, 나머지 코드·자원은 app/ 폴더에 있다.
 # app/ 을 파이썬 모듈 검색 경로에 추가해, 아래 import(config_manager·sap·applog)를
-# 예전과 똑같이 쓸 수 있게 한다. (설정·GUI·로그 경로는 각 파일 기준 상대경로라 유지됨)
-_APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
+# 예전과 똑같이 쓸 수 있게 한다.
+# .exe 로 실행하면 루트 = exe 가 있는 폴더(설치 폴더) — 설치 프로그램이 그 옆에 app/ 을
+# 같은 구조로 복사한다. (경로 기준은 app/paths.py 에 모아 둠)
+_FROZEN = bool(getattr(sys, "frozen", False))
+_ROOT = (os.path.dirname(os.path.abspath(sys.executable)) if _FROZEN
+         else os.path.dirname(os.path.abspath(__file__)))
+_APP_DIR = os.path.join(_ROOT, "app")
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
+
+# ── .exe 전용 실행 모드 (파이썬 실행에는 영향 없음) ─────────────────
+#  --splash   : 대기창만 띄우고 끝 (exe 안에는 별도 파이썬이 없어, exe 가 자기 자신을
+#               이 모드로 한 번 더 실행해 대기창을 만든다)
+#  --selftest : 빌드 검증용 — 필요한 부품이 exe 안에 다 들어갔는지 확인하고 바로 끝
+if __name__ == "__main__" and "--splash" in sys.argv:
+    sys.path.insert(0, os.path.join(_APP_DIR, "gui"))
+    import splash as _splash_mod
+    try:
+        _splash_mod.main()
+    except Exception:
+        pass
+    sys.exit(0)
+
+if __name__ == "__main__" and "--selftest" in sys.argv:
+    _results, _ok = [], True
+    for _name in ("webview", "clr", "win32com.client", "pythoncom", "tkinter",
+                  "splash", "paths", "applog", "config_manager", "sap.pipeline"):
+        try:
+            if _name == "splash":
+                sys.path.insert(0, os.path.join(_APP_DIR, "gui"))
+            __import__(_name)
+            _results.append("OK   %s" % _name)
+        except Exception as _e:
+            _ok = False
+            _results.append("FAIL %s : %r" % (_name, _e))
+    for _f in ("app/gui/index.html", "app/config/settings.json", "app/version.json"):
+        _exists = os.path.exists(os.path.join(_ROOT, _f))
+        _ok = _ok and _exists
+        _results.append("%s %s" % ("OK  " if _exists else "MISS", _f))
+    try:   # 콘솔 없는 exe 라 화면 출력 대신 파일로 남김
+        with open(os.path.join(_ROOT, "selftest.txt"), "w", encoding="utf-8") as _fp:
+            _fp.write("\n".join(_results) + "\n")
+    except Exception:
+        pass
+    sys.exit(0 if _ok else 1)
 
 
 def _launch_splash():
@@ -33,6 +74,11 @@ def _launch_splash():
     """
     try:
         import subprocess
+        if _FROZEN:
+            # exe: 자기 자신을 '대기창 모드'로 실행(콘솔 없는 exe 라 창 옵션 불필요)
+            return subprocess.Popen([sys.executable, "--splash"], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    text=True, encoding="utf-8")
         script = os.path.join(_APP_DIR, "gui", "splash.py")
         exe, flags = sys.executable, 0
         if os.name == "nt":

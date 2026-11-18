@@ -1,0 +1,116 @@
+name: 설치 파일 빌드
+
+# 언제 빌드하나
+#  - main            : app/version.json(버전)이 바뀐 푸시일 때만 → Releases "latest" 교체
+#  - claude/exe-installer (테스트 브랜치): 푸시마다 → Releases "test-build"(사전 배포) 교체
+#  - 수동 실행(Actions 화면의 Run workflow): 항상
+on:
+  push:
+    branches: [main, claude/exe-installer]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 버전 읽기 · 빌드 여부 판단
+        id: ver
+        shell: pwsh
+        run: |
+          $ver = (Get-Content app/version.json -Raw -Encoding utf8 | ConvertFrom-Json).version
+          if (-not $ver) { Write-Error "app/version.json 에서 version 을 찾지 못함"; exit 1 }
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $build = "true"
+          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -eq "main") {
+            $before = "${{ github.event.before }}"
+            $changed = git diff --name-only $before ${{ github.sha }} -- app/version.json 2>$null
+            if (-not $changed) { $build = "false"; Write-Host "버전 변경 없음 → 빌드 건너뜀" }
+          }
+          "build=$build" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "버전 $ver / 빌드 $build"
+
+      - uses: actions/setup-python@v5
+        if: steps.ver.outputs.build == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: 패키지 설치
+        if: steps.ver.outputs.build == 'true'
+        run: pip install -r installer/requirements-build.txt
+
+      - name: exe 빌드 (PyInstaller 폴더형, 콘솔 없음)
+        if: steps.ver.outputs.build == 'true'
+        run: >
+          pyinstaller --noconfirm --onedir --windowed --name SAPOrderAutomation
+          --paths app --paths app/gui
+          --hidden-import splash --collect-submodules sap
+          main.py
+
+      - name: 자가 점검 (exe 안에 필요한 부품이 다 들어갔는지)
+        if: steps.ver.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          # 설치 후와 같은 구조(exe 옆에 app 폴더)를 임시로 만들어 --selftest 실행
+          $t = "selftest_dir"
+          Copy-Item -Recurse dist\SAPOrderAutomation $t
+          New-Item -ItemType Directory -Force "$t\app\config" | Out-Null
+          Copy-Item -Recurse app\gui "$t\app\gui"
+          Copy-Item app\version.json "$t\app\"
+          Copy-Item app\config\settings.json "$t\app\config\"
+          $p = Start-Process -FilePath "$t\SAPOrderAutomation.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "$t\selftest.txt" -Encoding utf8
+          if ($p.ExitCode -ne 0) { Write-Error "자가 점검 실패 (exit $($p.ExitCode))"; exit 1 }
+
+      - name: Inno Setup 준비 (+ 한글 깨짐 방지 UTF-8 BOM 변환)
+        if: steps.ver.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $text = Get-Content installer\installer.iss -Raw -Encoding utf8
+          [IO.File]::WriteAllText("installer\installer.iss", $text, (New-Object Text.UTF8Encoding $true))
+
+      - name: 설치 파일 생성
+        if: steps.ver.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION" installer\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = (Get-ChildItem installer_output\*.exe | Select-Object -First 1).FullName
+          Write-Host "설치 파일: $setup"
+          "SETUP_FILE=$setup" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 빌드 결과 보관 (Actions 화면에서도 내려받기 가능)
+        if: steps.ver.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-${{ env.VERSION }}
+          path: installer_output/*.exe
+
+      - name: Releases 에 올리기
+        if: steps.ver.outputs.build == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ("${{ github.ref_name }}" -eq "main") {
+            $tag = "latest"; $title = "최신 설치 파일 ($env:VERSION)"; $pre = @()
+          } else {
+            $tag = "test-build"; $title = "테스트 빌드 ($env:VERSION, ${{ github.ref_name }})"; $pre = @("--prerelease")
+          }
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          $global:LASTEXITCODE = 0
+          gh release create $tag "$env:SETUP_FILE" --target ${{ github.sha }} --title "$title" --notes "커밋 ${{ github.sha }} 기준 자동 빌드" @pre
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release view $tag --json assets --jq ".assets[].name"

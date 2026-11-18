@@ -23,10 +23,12 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
   → HTML에서 Google Fonts @import 방식 금지, @font-face 로컬 방식만 사용
 
 ## 버전 관리
-- 버전 값은 `app/config/settings.json`의 `version`·`version_date` 한 곳에서 관리하며, 화면 우측 하단에 표시된다.
+- 버전 값은 `app/version.json`의 `version`·`version_date` 한 곳에서 관리하며, 화면 우측 하단과 설치 파일·바로가기 이름에 표시된다.
+  (settings.json 에서 분리한 이유: 설치형 업데이트 때 사용자가 고친 단가표(settings.json)는 보존하고 버전만 새로 바꾸기 위함)
 - 버전 규칙(유의적 버전, 주.부.수정): 큰 변경=주(`2.0.0`) / 기능 추가=부(`1.1.0`) / 잔손질=수정(`1.0.2`). 윗자리 올리면 아랫자리 0으로 리셋.
 - **의미 있는 변경을 커밋하기 전에**, 변경 성격에 맞는 새 버전을 **사용자에게 먼저 제안해 확정받는다**(예: "이번은 1.0.2(수정) 감입니다 — 올릴까요?"). 임의로 올리지 않는다.
-- 확정되면 커밋 전에 ①`settings.json`의 `version`·`version_date`(그날 날짜) 갱신 ②`app/docs/CHANGELOG.md` 맨 위에 `## [버전] - 날짜` + 변경 요약 추가.
+- 확정되면 커밋 전에 ①`app/version.json`의 `version`·`version_date`(그날 날짜) 갱신 ②`app/docs/CHANGELOG.md` 맨 위에 `## [버전] - 날짜` + 변경 요약 추가.
+- main 에서 `app/version.json`이 바뀐 푸시는 GitHub Actions 가 설치 파일을 자동 빌드해 Releases "latest"에 올린다(아래 '설치 파일 배포').
 
 ## SAP 연결 방식
 - 사용자가 SAP에 직접 로그인 후 Python이 열린 세션에 연결
@@ -45,6 +47,8 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
 - app/gui/splash.py: 시작 대기창(스켈레톤). main.py 가 별도 프로세스로 먼저 띄우고, 본 화면 준비(gui_ready) 시 닫음
   (자원: app/gui/assets/splash_logo.png, app/gui/assets/fonts/splash_*.ttf)
 - app/gui/assets/fonts/: 로컬 폰트 파일 보관 폴더 (Gmarket Sans Bold, Nanum Gothic)
+- app/paths.py: 프로그램 루트 경로 기준(파이썬 실행 / .exe 실행 공통). 설정·화면·로그 경로는 여기서 정한다.
+- app/version.json: 프로그램 버전(단일 출처)
 - app/config/settings.json: 허가청·업체·단가표 설정값
 - app/docs/CHANGELOG.md: 버전별 변경 이력 (최신순)
 
@@ -53,3 +57,11 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
   → 코드만 설명하지 말고, 실제 화면을 이미지로 확인시켜 줄 것.
 - 실행 환경에 브라우저가 없을 수 있으니, 로컬 CLI라면 먼저 Playwright/Chromium
   설치 여부를 확인하고, 없으면 설치 방법을 안내할 것.
+
+## 설치 파일 배포 (.exe)
+- GitHub Actions(`.github/workflows/build.yml`, windows-latest)가 PyInstaller(폴더형·콘솔 없음)로 exe 를 만들고 Inno Setup(`installer/installer.iss`)으로 설치 파일을 만든다. PC 에서 빌드하지 않는다.
+- 설치 파일 이름: `SAP 공사 발주 자동화 프로그램(버전).exe`, 바탕화면 바로가기 이름도 같은 형식. 이전 버전 바로가기는 설치 때 자동 삭제.
+- 설치 위치: 사용자 폴더(%LOCALAPPDATA%\Programs, 관리자 권한 불필요). exe 옆에 `app\`(gui·config·version.json·logs)이 소스와 같은 구조로 놓인다.
+- 업데이트 설치 때 `app\config\settings.json`은 덮어쓰지 않는다(단가표 보존). 허가청·업체 목록 등을 바꿔도 기존 설치 PC 에는 반영되지 않으므로 필요 시 별도 안내.
+- 빌드 전용 라이브러리 버전은 `installer/requirements-build.txt`에 고정한다.
+- exe 전용 실행 모드(main.py): `--splash`(대기창만), `--selftest`(빌드 검증, exe 옆 selftest.txt 기록).

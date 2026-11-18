@@ -14,9 +14,23 @@ SAP·GUI 와 무관한 순수 파이썬 모듈이라 단독 실행/검증이 가
 import json
 import os
 
-# settings.json 기본 경로 (이 파일 기준 config/settings.json)
-DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "config", "settings.json")
+import paths
+
+# settings.json 기본 경로 (프로그램 루트/app/config/settings.json — 파이썬·exe 공통, paths.py 참고)
+DEFAULT_PATH = os.path.join(paths.CONFIG_DIR, "settings.json")
+
+
+def _read_version():
+    """app/version.json 의 버전 정보 {"version", "version_date"}. 없거나 깨지면 빈 값.
+
+    버전을 settings.json 에서 분리한 이유: 설치형(exe) 업데이트 때 사용자가 고친
+    단가표(settings.json)는 보존하고, 버전 표시는 새 값으로 바뀌어야 하기 때문.
+    """
+    try:
+        with open(paths.VERSION_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 # 단가표에서 쓰는 도로재질 종류와 연장 범위 (고정)
 MATERIALS = ("ASP", "CONC")   # ASP=절삭포장, CONC=CON'C 및 보도블럭(ASP 外)
@@ -80,13 +94,13 @@ class ConfigManager:
 
     @property
     def app_version(self):
-        """프로그램 버전 문자열 (예: 'v.1.0.1'). 화면 좌/우 하단 표시용."""
-        return str(self.data.get("version", ""))
+        """프로그램 버전 문자열 (예: '1.1.1'). 화면 우측 하단 표시용. 출처: app/version.json."""
+        return str(_read_version().get("version", ""))
 
     @property
     def app_version_date(self):
-        """프로그램 버전(배포) 날짜 (예: '2026-10-19')."""
-        return str(self.data.get("version_date", ""))
+        """프로그램 버전(배포) 날짜 (예: '2026-11-17'). 출처: app/version.json."""
+        return str(_read_version().get("version_date", ""))
 
     # ── 목록(드롭다운용) ───────────────────────────────────────
     def permit_offices(self):

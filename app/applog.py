@@ -20,8 +20,10 @@ import os
 import datetime
 import traceback
 
-# 로그 파일 폴더 (이 파일 기준 logs/)
-_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+import paths
+
+# 로그 파일 폴더 (프로그램 루트/app/logs — 파이썬·exe 공통, paths.py 참고)
+_LOG_DIR = paths.LOG_DIR
 
 # 화면(GUI)에 로그를 찍는 콜백 — main.py 가 등록한다. 없으면 파일에만 남는다.
 _gui_emit = None  # callable(msg: str, level: str) -> None
