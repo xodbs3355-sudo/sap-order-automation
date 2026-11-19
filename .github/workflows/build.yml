@@ -53,6 +53,7 @@ jobs:
         if: steps.ver.outputs.build == 'true'
         run: >
           pyinstaller --noconfirm --onedir --windowed --name SAPOrderAutomation
+          --icon app/gui/assets/app.ico
           --paths app --paths app/gui
           --hidden-import splash --collect-submodules sap
           main.py
@@ -89,7 +90,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $setup = (Get-ChildItem installer_output\*.exe | Select-Object -First 1).FullName
           Write-Host "설치 파일: $setup"
+          # GitHub Releases 는 파일 이름의 한글·공백·괄호를 지우므로(실측: 'SAP.1.1.1.exe'),
+          # 올릴 때는 저장소 이름(영문) + 버전으로 이름을 붙인다.
+          $asset = "sap-order-automation-$env:VERSION.exe"
+          Copy-Item $setup $asset
           "SETUP_FILE=$setup" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ASSET_FILE=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: 빌드 결과 보관 (Actions 화면에서도 내려받기 가능)
         if: steps.ver.outputs.build == 'true'
@@ -111,6 +117,6 @@ jobs:
           }
           gh release delete $tag --yes --cleanup-tag 2>$null
           $global:LASTEXITCODE = 0
-          gh release create $tag "$env:SETUP_FILE" --target ${{ github.sha }} --title "$title" --notes "커밋 ${{ github.sha }} 기준 자동 빌드" @pre
+          gh release create $tag "$env:ASSET_FILE" --target ${{ github.sha }} --title "$title" --notes "커밋 ${{ github.sha }} 기준 자동 빌드" @pre
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release view $tag --json assets --jq ".assets[].name"

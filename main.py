@@ -52,7 +52,8 @@ if __name__ == "__main__" and "--selftest" in sys.argv:
         except Exception as _e:
             _ok = False
             _results.append("FAIL %s : %r" % (_name, _e))
-    for _f in ("app/gui/index.html", "app/config/settings.json", "app/version.json"):
+    for _f in ("app/gui/index.html", "app/config/settings.json", "app/version.json",
+               "app/gui/assets/app.ico"):
         _exists = os.path.exists(os.path.join(_ROOT, _f))
         _ok = _ok and _exists
         _results.append("%s %s" % ("OK  " if _exists else "MISS", _f))
@@ -744,8 +745,18 @@ def main() -> None:
 
     window.events.shown += _on_shown
     window.events.loaded += _on_loaded
+    # 창 아이콘: exe 로 실행하면 exe 자체 아이콘이 자동 적용된다.
+    # 파이썬 실행일 때도 같은 아이콘을 쓰도록 지정(설치된 pywebview 가 icon 인자를 지원할 때만).
+    start_kw = {}
     try:
-        webview.start()
+        import inspect
+        ico = os.path.join(_APP_DIR, "gui", "assets", "app.ico")
+        if os.path.isfile(ico) and "icon" in inspect.signature(webview.start).parameters:
+            start_kw["icon"] = ico
+    except Exception as e:
+        applog.warn("창 아이콘 지정 생략: %s" % e)
+    try:
+        webview.start(**start_kw)
     finally:
         _close_splash()   # 창을 닫거나 오류로 끝나도 대기창이 남지 않게
 

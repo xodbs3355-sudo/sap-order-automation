@@ -28,6 +28,8 @@ OutputBaseFilename={#MyAppName}({#MyAppVersion})
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=app\gui\assets\app.ico
+UninstallDisplayIcon={app}\{#MyAppExe}
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"

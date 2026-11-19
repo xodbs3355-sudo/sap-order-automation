@@ -17,6 +17,9 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
 - 코드 수정 시 영향 범위를 먼저 설명하고 허락 후 진행
 - 하나의 요청 = 하나의 작업만 실행
 - 커밋/푸시는 반드시 사용자 허락 후 진행
+- **반영 범위 확인(모든 세션 공통)**: 프로그램 로직(코드·화면·설정)을 바꾼 작업은 커밋/푸시 전에 항상 사용자에게 물어본다 —
+  "① 브랜치(main: 파이썬 실행용 내려받기)와 ② 릴리즈(설치 파일 .exe 내려받기)에 **둘 다 반영할까요, 한쪽만 할까요?**"
+  → 릴리즈(.exe)는 main 에서 `app/version.json`(버전)이 바뀐 푸시일 때 자동 빌드되므로, 릴리즈까지 반영하려면 버전 올림(아래 '버전 관리')도 함께 확정받는다.
 - 전문용어 사용 시 반드시 설명과 비유 포함
 - 폰트는 로컬 파일 방식 사용 (app/gui/assets/fonts/ 폴더)
   → 폰트 파일은 추후 사용자가 직접 해당 폴더에 복사 예정
@@ -61,6 +64,8 @@ ZREC0002 → ZREC0100 → ZMEC0210 → ZREC2030 → ZREC2040 → ZREC0208
 ## 설치 파일 배포 (.exe)
 - GitHub Actions(`.github/workflows/build.yml`, windows-latest)가 PyInstaller(폴더형·콘솔 없음)로 exe 를 만들고 Inno Setup(`installer/installer.iss`)으로 설치 파일을 만든다. PC 에서 빌드하지 않는다.
 - 설치 파일 이름: `SAP 공사 발주 자동화 프로그램(버전).exe`, 바탕화면 바로가기 이름도 같은 형식. 이전 버전 바로가기는 설치 때 자동 삭제.
+  단, GitHub Releases 에 올리는 파일 이름은 `sap-order-automation-버전.exe`(GitHub 가 한글·공백·괄호를 지우기 때문).
+- 아이콘: `app/gui/assets/app.ico`(문서 + SAP 로고). exe·바로가기·설치 파일·창 제목줄에 사용.
 - 설치 위치: 사용자 폴더(%LOCALAPPDATA%\Programs, 관리자 권한 불필요). exe 옆에 `app\`(gui·config·version.json·logs)이 소스와 같은 구조로 놓인다.
 - 업데이트 설치 때 `app\config\settings.json`은 덮어쓰지 않는다(단가표 보존). 허가청·업체 목록 등을 바꿔도 기존 설치 PC 에는 반영되지 않으므로 필요 시 별도 안내.
 - 빌드 전용 라이브러리 버전은 `installer/requirements-build.txt`에 고정한다.
